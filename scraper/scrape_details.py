@@ -21,6 +21,10 @@ from waterloo_awards import db
 from waterloo_awards.browser import goto_award_detail, read_detail_fields
 from waterloo_awards.config import DB_PATH
 
+# Must precede basicConfig: its FileHandler opens the log file at import
+# time, which fails on a fresh checkout where logs/ does not exist yet.
+Path("logs").mkdir(exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -45,7 +49,6 @@ def fetch_one(page, award_id, attempts=2):
 
 
 def main():
-    Path("logs").mkdir(exist_ok=True)
     conn = db.connect(DB_PATH)
     todo = db.unscraped_award_ids(conn)
     total_todo = len(todo)

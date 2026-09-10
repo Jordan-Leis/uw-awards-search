@@ -26,6 +26,10 @@ from waterloo_awards.config import (
     DB_PATH, CAREER_LEVEL_PAIRS, AWARD_TYPE_CODES, SELECTION_PROCESS_CODES, ROW_CAP,
 )
 
+# Must precede basicConfig: its FileHandler opens the log file at import
+# time, which fails on a fresh checkout where logs/ does not exist yet.
+Path("logs").mkdir(exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -105,7 +109,6 @@ def run_combo_with_recovery(context, conn, career, level, max_retries=5):
 
 
 def main():
-    Path("logs").mkdir(exist_ok=True)
     conn = db.connect(DB_PATH)
 
     with sync_playwright() as p:
