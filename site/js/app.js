@@ -54,7 +54,10 @@
   }
 
   function snippetFor(award) {
-    return award.award_description || award.eligibility_selection_criteria || "";
+    const text = award.award_description || award.eligibility_selection_criteria || "";
+    // Detail text is multi-line (list items become their own lines); flatten
+    // it for the card preview so the clamped snippet reads as one paragraph.
+    return text.replace(/\s*\n\s*/g, " ");
   }
 
   function renderResults(reset) {

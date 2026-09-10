@@ -1,3 +1,4 @@
+import re
 import time
 import logging
 
@@ -74,7 +75,6 @@ def parse_rowcount_text(text, row_cap):
     """
     if text is None:
         return 0, None, False
-    import re
     m = re.search(r"Showing (\d+) of possible (\d+)", text)
     if m:
         shown, total = int(m.group(1)), int(m.group(2))
@@ -236,6 +236,38 @@ def goto_award_detail(page, award_id, timeout_ms=30000):
     page.wait_for_selector('#fld-PAGEREC-UW_AWARD_DISPLAYNM-editor', timeout=timeout_ms)
 
 
+BLOCK_TAGS = ["p", "li", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "tr"]
+
+
+def extract_block_text(root):
+    """Flatten one field's rich-text HTML to plain text.
+
+    Block elements (list items, paragraphs) become separate lines, while
+    inline elements (links, spans, emphasis) flow naturally inside their
+    sentence. Using BeautifulSoup's get_text(separator=...) instead would
+    put a separator at *every* text-node boundary, which mangles sentences
+    containing inline links, e.g. "please contact the applicable |
+    Department Graduate Co-ordinator | ." — the separator can't tell a real
+    list boundary from a mid-sentence link.
+    """
+    for br in root.find_all("br"):
+        br.replace_with("\n")
+
+    blocks = [b for b in root.find_all(BLOCK_TAGS) if not b.find(BLOCK_TAGS)]
+    if not blocks:
+        # No block structure (plain text in the editor div) — take it whole.
+        return re.sub(r"[ \t]+", " ", root.get_text()).strip()
+
+    lines = []
+    for b in blocks:
+        # No separator: the source's own whitespace between inline nodes is
+        # preserved, then collapsed. Don't strip per-node or words fuse together.
+        text = re.sub(r"[ \t]+", " ", b.get_text()).strip()
+        if text:
+            lines.append(text)
+    return "\n".join(lines)
+
+
 def read_detail_fields(page):
     """Generic extraction: every fld-PAGEREC-<NAME>-editor element present on
     the page, keyed by <NAME>. Which fields appear varies per award (only
@@ -244,7 +276,7 @@ def read_detail_fields(page):
     fields = {}
     for el in soup.select('[id^="fld-PAGEREC-"][id$="-editor"]'):
         field_name = el["id"][len("fld-PAGEREC-"):-len("-editor")]
-        text = el.get_text(separator=" | ", strip=True)
+        text = extract_block_text(el)
         if text:
             fields[field_name] = text
     return fields
