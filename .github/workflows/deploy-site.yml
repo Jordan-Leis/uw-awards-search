@@ -1,0 +1,37 @@
+name: Deploy site
+
+# Publishes site/ as-is, without re-scraping. Useful for frontend-only changes
+# (CSS/JS/HTML) and for getting the page live before a long data refresh
+# finishes — the data itself is whatever is currently committed in site/data/.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/deploy-site.yml'
+
+# Deliberately NOT the same concurrency group as refresh-data.yml: that
+# workflow holds its group for its full multi-hour run, which would leave a
+# quick frontend deploy queued behind the whole scrape.
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+      - id: deployment
+        uses: actions/deploy-pages@v4
