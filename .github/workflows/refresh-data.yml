@@ -1,0 +1,84 @@
+name: Refresh awards data
+
+on:
+  schedule:
+    # 06:00 UTC on Jan 1, May 1, and Sep 1 — three refreshes a year.
+    - cron: '0 6 1 1,5,9 *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  scrape-and-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: scraper
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: scraper/requirements.txt
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright Chromium + system deps
+        run: python -m playwright install --with-deps chromium
+
+      - name: Build the award index (search enumeration)
+        run: python scrape_index.py
+
+      - name: Fetch award details (resumable; retry to mop up flaky failures)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== scrape_details.py attempt $attempt ==="
+            python scrape_details.py || true
+            remaining=$(python count_unscraped.py)
+            echo "Awards still missing details: $remaining"
+            if [ "$remaining" -eq 0 ]; then
+              break
+            fi
+          done
+
+      - name: Export data (validation gate — fails the job on a bad scrape)
+        run: python export_data.py
+
+      - name: Commit refreshed data
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'Data refresh: ${{ github.run_id }}'
+          file_pattern: 'site/data/awards.json site/data/meta.json'
+
+  deploy:
+    needs: scrape-and-export
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # Check out the branch tip (not the triggering SHA) so this picks up the
+      # data commit the previous job just pushed.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

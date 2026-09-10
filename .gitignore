@@ -1,0 +1,14 @@
+# Python / scraper local artifacts — CI always scrapes fresh from a clean DB
+scraper/venv/
+scraper/awards.db
+scraper/awards.db-wal
+scraper/awards.db-shm
+scraper/logs/
+scraper/spike_output/
+scraper/__pycache__/
+scraper/**/__pycache__/
+*.pyc
+
+# OS cruft
+.DS_Store
+Thumbs.db
