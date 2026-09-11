@@ -20,7 +20,11 @@ jobs:
       run:
         working-directory: scraper
     steps:
+      # Full history: the rebase before committing needs real history, which a
+      # default shallow (depth-1) checkout doesn't provide.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -51,6 +55,12 @@ jobs:
 
       - name: Export data (validation gate — fails the job on a bad scrape)
         run: python export_data.py
+
+      # This job runs for over an hour, so main has often moved on by the time
+      # it finishes; without this the commit below dies on a non-fast-forward
+      # push. --autostash keeps the freshly-written site/data changes.
+      - name: Sync with remote before committing
+        run: git pull --rebase --autostash origin ${{ github.ref_name }}
 
       - name: Commit refreshed data
         uses: stefanzweifel/git-auto-commit-action@v5
