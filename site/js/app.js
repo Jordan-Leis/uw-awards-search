@@ -2,15 +2,11 @@
   const PAGE_SIZE = 50;
   let visibleCount = PAGE_SIZE;
   let currentResults = [];
+  const filterControls = {};
 
   const el = {
     searchInput: document.getElementById("search-input"),
-    career: document.getElementById("filter-career"),
-    level: document.getElementById("filter-level"),
-    awardType: document.getElementById("filter-award-type"),
-    term: document.getElementById("filter-term"),
-    affiliation: document.getElementById("filter-affiliation"),
-    areaOfStudy: document.getElementById("filter-area-of-study"),
+    filterBar: document.getElementById("filter-bar"),
     clearFilters: document.getElementById("clear-filters"),
     matchToggle: document.getElementById("match-mode-toggle"),
     editProfileBtn: document.getElementById("edit-profile-btn"),
@@ -44,12 +40,12 @@
 
   function currentFilters() {
     return {
-      career: el.career.value,
-      level: el.level.value,
-      awardType: el.awardType.value,
-      term: el.term.value,
-      affiliation: el.affiliation.value,
-      areaOfStudy: el.areaOfStudy.value,
+      career: filterControls.career.value,
+      level: filterControls.level.value,
+      awardType: filterControls.awardType.value,
+      term: filterControls.term.value,
+      affiliation: filterControls.affiliation.value,
+      areaOfStudy: filterControls.areaOfStudy.value,
     };
   }
 
@@ -74,12 +70,15 @@
       return;
     }
 
-    for (const award of toShow) {
+    toShow.forEach((award, i) => {
       const card = document.createElement("article");
       card.className = "award-card";
       card.tabIndex = 0;
       card.setAttribute("role", "button");
       card.setAttribute("aria-label", `View details for ${award.award_name}`);
+      // Stagger only the first screenful; past that the delay would read as
+      // lag rather than polish.
+      if (i < 12) card.style.animationDelay = `${i * 25}ms`;
 
       const tags = [award.career, ...(award.levels || []).slice(0, 2), ...(award.terms || [])]
         .filter(Boolean);
@@ -90,11 +89,14 @@
         <p class="snippet">${escapeHtml(snippetFor(award))}</p>
       `;
       card.addEventListener("click", () => openModal(award));
-      card.addEventListener("keypress", (e) => {
-        if (e.key === "Enter" || e.key === " ") openModal(award);
+      card.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openModal(award);
+        }
       });
       el.cardGrid.appendChild(card);
-    }
+    });
 
     el.loadMoreRow.hidden = visibleCount >= currentResults.length;
   }
@@ -133,8 +135,9 @@
         ${fieldRow("Contact", award.contact_detail)}
       </dl>
     `;
-    document.getElementById("modal-close-x").addEventListener("click", closeModal);
+    document.getElementById("modal-close-x").addEventListener("click", () => closeModal());
     el.modalBackdrop.hidden = false;
+    document.body.classList.add("modal-open");
     if (history.pushState) {
       history.pushState({ award: award.award_id }, "", `?award=${encodeURIComponent(award.award_id)}`);
     }
@@ -142,6 +145,7 @@
 
   function closeModal(skipHistory) {
     el.modalBackdrop.hidden = true;
+    document.body.classList.remove("modal-open");
     if (!skipHistory && history.pushState) {
       history.pushState({}, "", window.location.pathname);
     }
@@ -172,6 +176,21 @@
       clearTimeout(t);
       t = setTimeout(() => fn(...args), ms);
     };
+  }
+
+  function buildFilters() {
+    const onChange = () => applyFiltersAndSearch(true);
+    const mk = (label, groups, searchable) =>
+      MultiSelect.create({ mount: el.filterBar, label, groups, onChange, searchable });
+
+    filterControls.career = mk("All careers", [{ values: AwardSearch.uniqueScalarValues("career") }]);
+    filterControls.level = mk("All levels", [{ values: AwardSearch.uniqueValues("levels") }]);
+    filterControls.awardType = mk("All award types", [{ values: AwardSearch.uniqueValues("award_types") }]);
+    filterControls.term = mk("All terms", [{ values: AwardSearch.uniqueValues("terms") }]);
+    filterControls.affiliation = mk("All affiliations", [{ values: AwardSearch.uniqueValues("affiliations") }]);
+    // ~180 entries, so this one gets a type-ahead box plus the faculty-wide /
+    // specific-program grouping.
+    filterControls.areaOfStudy = mk("All areas of study", AwardSearch.areaOfStudyGroups(), true);
   }
 
   function setupProfileEditor() {
@@ -221,28 +240,18 @@
     }
 
     AwardSearch.init(awards);
+    buildFilters();
 
-    const careerValues = [...new Set(awards.map((a) => a.career).filter(Boolean))].sort();
-    populateSelect(el.career, careerValues, "All careers");
-    populateSelect(el.level, AwardSearch.uniqueValues("levels"), "All levels");
-    populateSelect(el.awardType, AwardSearch.uniqueValues("award_types"), "All award types");
-    populateSelect(el.term, AwardSearch.uniqueValues("terms"), "All terms");
-    populateSelect(el.affiliation, AwardSearch.uniqueValues("affiliations"), "All affiliations");
-    populateSelect(el.areaOfStudy, AwardSearch.uniqueValues("areas_of_study"), "All areas of study");
-
-    populateSelect(el.profileCareer, careerValues, "No preference");
+    populateSelect(el.profileCareer, AwardSearch.uniqueScalarValues("career"), "No preference");
     populateSelect(el.profileLevel, AwardSearch.uniqueValues("levels"), "No preference");
     populateSelect(el.profileArea, AwardSearch.uniqueValues("areas_of_study"), "No preference");
 
     setupProfileEditor();
 
     el.searchInput.addEventListener("input", debounce(() => applyFiltersAndSearch(true), 150));
-    [el.career, el.level, el.awardType, el.term, el.affiliation, el.areaOfStudy].forEach((sel) => {
-      sel.addEventListener("change", () => applyFiltersAndSearch(true));
-    });
     el.clearFilters.addEventListener("click", () => {
       el.searchInput.value = "";
-      [el.career, el.level, el.awardType, el.term, el.affiliation, el.areaOfStudy].forEach((sel) => sel.value = "");
+      MultiSelect.clearAll();
       applyFiltersAndSearch(true);
     });
     el.loadMoreBtn.addEventListener("click", () => {
@@ -251,6 +260,9 @@
     });
     el.modalBackdrop.addEventListener("click", (e) => {
       if (e.target === el.modalBackdrop) closeModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !el.modalBackdrop.hidden) closeModal();
     });
     window.addEventListener("popstate", () => {
       const params = new URLSearchParams(window.location.search);

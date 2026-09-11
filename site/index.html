@@ -32,16 +32,10 @@
         <input type="search" id="search-input" placeholder="Search award name, description, eligibility…" aria-label="Search awards">
       </div>
 
-      <div class="filter-grid">
-        <select id="filter-career" aria-label="Filter by career"></select>
-        <select id="filter-level" aria-label="Filter by level"></select>
-        <select id="filter-award-type" aria-label="Filter by award type"></select>
-        <select id="filter-term" aria-label="Filter by term"></select>
-        <select id="filter-affiliation" aria-label="Filter by affiliation"></select>
-        <select id="filter-area-of-study" aria-label="Filter by area of study"></select>
-      </div>
+      <!-- Multi-select filter controls are built by js/multiselect.js -->
+      <div class="filter-grid" id="filter-bar"></div>
 
-      <div style="display:flex; justify-content:flex-end;">
+      <div class="filter-actions">
         <button class="btn" id="clear-filters" type="button">Clear filters</button>
       </div>
 
@@ -79,6 +73,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js"></script>
+  <script src="js/multiselect.js"></script>
   <script src="js/profile.js"></script>
   <script src="js/search.js"></script>
   <script src="js/app.js"></script>

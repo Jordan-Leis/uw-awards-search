@@ -337,3 +337,289 @@ footer.site-footer {
 
 .about-content h2 { margin-top: 1.5rem; }
 .about-content h2:first-child { margin-top: 0; }
+
+/* ---------------------------------------------------------------------------
+   Multi-select filters
+   --------------------------------------------------------------------------- */
+
+.filter-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ms {
+  position: relative;
+}
+
+.ms-button {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 1.9rem 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.ms-button::after {
+  content: "";
+  position: absolute;
+  right: 0.7rem;
+  top: 50%;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-70%) rotate(45deg);
+  opacity: 0.5;
+  transition: transform 0.2s ease;
+}
+
+.ms.open .ms-button::after {
+  transform: translateY(-20%) rotate(-135deg);
+}
+
+.ms-button:hover {
+  border-color: var(--accent);
+}
+
+.ms-button:focus-visible,
+.ms-button:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.ms-button.has-selection {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.ms-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  max-width: 320px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(15, 18, 32, 0.16);
+  padding: 0.4rem;
+  animation: ms-pop 0.14s ease-out;
+}
+
+@keyframes ms-pop {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.ms-search {
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  margin-bottom: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.ms-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.ms-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.ms-group-heading {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 0.5rem 0.5rem 0.25rem;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+}
+
+.ms-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.ms-option:hover {
+  background: var(--accent-soft);
+}
+
+.ms-option input {
+  margin-top: 0.18rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Motion & interaction polish
+   --------------------------------------------------------------------------- */
+
+.award-card {
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+  animation: card-in 0.28s ease-out both;
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.award-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 22px rgba(15, 18, 32, 0.12);
+  border-color: var(--accent);
+}
+
+.award-card:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.award-card h3 {
+  transition: color 0.16s ease;
+}
+
+.award-card:hover h3 {
+  color: var(--accent);
+}
+
+.tag {
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.btn {
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+#search-input {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+#search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.site-nav a {
+  position: relative;
+  transition: color 0.15s ease;
+}
+
+.site-nav a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: 100%;
+  height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.18s ease;
+}
+
+.site-nav a:hover::after,
+.site-nav a.active::after {
+  transform: scaleX(1);
+}
+
+.modal-backdrop {
+  animation: fade-in 0.16s ease-out;
+}
+
+.modal {
+  animation: modal-in 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-close {
+  border-radius: 6px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.modal-close:hover {
+  background: var(--tag-bg);
+  color: var(--text);
+}
+
+/* Prevent the page scrolling behind an open modal */
+body.modal-open {
+  overflow: hidden;
+}
+
+.profile-editor {
+  animation: ms-pop 0.16s ease-out;
+}
+
+/* Honour reduced-motion: keep hover/focus feedback, drop the movement. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+
+  .award-card:hover,
+  .btn:hover {
+    transform: none;
+  }
+}
+
+/* An author-set display value beats the UA stylesheet's [hidden]{display:none},
+   so the type-ahead filter's .hidden toggling needs these explicit rules. */
+.ms-option[hidden],
+.ms-group-heading[hidden] {
+  display: none !important;
+}
