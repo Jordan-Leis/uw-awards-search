@@ -11,12 +11,13 @@ on:
       - 'site/**'
       - '.github/workflows/deploy-site.yml'
 
-# Deliberately NOT the same concurrency group as refresh-data.yml: that
-# workflow holds its group for its full multi-hour run, which would leave a
-# quick frontend deploy queued behind the whole scrape.
+# Shared with refresh-data.yml's deploy job (scoped to that job, so the long
+# scrape never holds this group) so two Pages deployments can't overlap.
+# Queue rather than cancel: cancelling a data-refresh deploy mid-flight would
+# leave the site serving stale content until something else triggers a deploy.
 concurrency:
   group: pages-deploy
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:

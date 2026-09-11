@@ -6,10 +6,6 @@ on:
     - cron: '0 6 1 1,5,9 *'
   workflow_dispatch: {}
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
   scrape-and-export:
     runs-on: ubuntu-latest
@@ -20,8 +16,8 @@ jobs:
       run:
         working-directory: scraper
     steps:
-      # Full history: the rebase before committing needs real history, which a
-      # default shallow (depth-1) checkout doesn't provide.
+      # Full history so the commit step can fetch and reset onto the branch
+      # tip; a default shallow (depth-1) checkout can't.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -56,21 +52,45 @@ jobs:
       - name: Export data (validation gate — fails the job on a bad scrape)
         run: python export_data.py
 
-      # This job runs for over an hour, so main has often moved on by the time
-      # it finishes; without this the commit below dies on a non-fast-forward
-      # push. --autostash keeps the freshly-written site/data changes.
-      - name: Sync with remote before committing
-        run: git pull --rebase --autostash origin ${{ github.ref_name }}
-
+      # main usually moves while this hour-long job runs. The exported files
+      # are build outputs, not edits to be merged: a fresh scrape should just
+      # win. So stash them outside the tree, hard-reset onto the current
+      # branch tip, and put them back. Rebase/--autostash was tried first and
+      # fails exactly when it matters — if the upstream commit also touched
+      # site/data/*, popping the stash conflicts and leaves a conflicted index
+      # that the commit step can't recover from.
       - name: Commit refreshed data
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: 'Data refresh: ${{ github.run_id }}'
-          file_pattern: 'site/data/awards.json site/data/meta.json'
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          staged=$(mktemp -d)
+          cp site/data/awards.json site/data/meta.json "$staged/"
+
+          git fetch origin "$GITHUB_REF_NAME"
+          git reset --hard "origin/$GITHUB_REF_NAME"
+
+          cp "$staged/awards.json" "$staged/meta.json" site/data/
+
+          if git diff --quiet -- site/data; then
+            echo "Award data is unchanged since the last refresh; nothing to commit."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/data/awards.json site/data/meta.json
+          git commit -m "Data refresh: ${{ github.run_id }}"
+          git push origin "HEAD:$GITHUB_REF_NAME"
 
   deploy:
     needs: scrape-and-export
     runs-on: ubuntu-latest
+    # Shares deploy-site.yml's group so two Pages deployments can't overlap.
+    # Scoped to this job, not the workflow, so the long scrape above doesn't
+    # hold the group (and block quick frontend deploys) for its whole run.
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
     permissions:
       pages: write
       id-token: write
