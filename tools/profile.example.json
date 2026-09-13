@@ -1,0 +1,26 @@
+{
+  "_README": "Copy this to tools/profile.json and edit. That path is gitignored - it is your private data, never commit it. Run 'python tools/find_awards.py --facets' to see every valid value for the enumerated fields.",
+
+  "profile_version": 1,
+
+  "career": "Undergraduate",
+  "levels": ["UG Year 3", "UG Year 4"],
+
+  "faculty": "Engineering",
+  "programs": ["Software Engineering"],
+
+  "terms": ["Fall", "Winter"],
+
+  "_note_citizenship_gpa": "These two are NOT used as filters - the source directory does not record them per award. They are here for your own reference; the tool instead flags awards whose eligibility text mentions citizenship (!cit) or a grade cutoff (!gpa) so you can check those by hand.",
+  "citizenship": "Canadian citizen",
+  "gpa_band": "85-89",
+
+  "financial_need": false,
+
+  "_note_affiliations": "Only set these if they apply to you. Awards restricted to an affiliation are excluded unless it matches, so a wrong value here hides awards.",
+  "affiliations": [],
+
+  "interests": ["machine learning", "robotics", "hardware", "entrepreneurship"],
+  "preferred_types": ["Awards/Scholarships/Prizes", "Entrepreneurial"],
+  "exclude_keywords": ["varsity", "athletic"]
+}

@@ -9,6 +9,12 @@ scraper/__pycache__/
 scraper/**/__pycache__/
 *.pyc
 
+# Personal matching profile — private (citizenship, financial need, grades).
+# Listed literally rather than as tools/profile.*.json, which would also
+# swallow the committed profile.example.json template.
+tools/profile.json
+tools/profile.local.json
+
 # OS cruft
 .DS_Store
 Thumbs.db
