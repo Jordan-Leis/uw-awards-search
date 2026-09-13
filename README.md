@@ -4,6 +4,41 @@ An independent, unofficial mirror of the University of Waterloo's [Awards Direct
 rebuilt as a single fast, client-side searchable/filterable page. **Not affiliated with or endorsed by the
 University of Waterloo** — see [`site/about.html`](site/about.html) for the full disclaimer and known data gaps.
 
+**Live at https://jordanleis.com/awards-database/** (also mirrored at
+https://jordan-leis.github.io/uw-awards-search/).
+
+## Find awards that fit you
+
+```
+cp tools/profile.example.json tools/profile.json   # edit with your program/year/interests
+python tools/find_awards.py                        # ranked shortlist
+python tools/find_awards.py --facets               # valid values for every filter
+python tools/find_awards.py --detail 202600074     # full text for one award
+```
+
+Stdlib only — no venv needed. It prints a compact shortlist (~150 chars per award) rather than
+the 2.6 MB dataset, so results fit in a chat or an AI assistant's context.
+
+**`tools/profile.json` is gitignored and must never be committed** — it holds citizenship,
+financial need and grade band. See [`tools/README.md`](tools/README.md) for the full reference,
+including why faculty-wide expansion nearly triples the eligible pool.
+
+## Machine-readable endpoints (unofficial)
+
+Served from both `https://jordanleis.com/awards-database/data/` and
+`https://jordan-leis.github.io/uw-awards-search/data/`:
+
+| file | contents | size |
+|---|---|---|
+| `index.json` | manifest — freshness, counts, all facet vocabularies | ~6 KB |
+| `awards.slim.json` | every award minus the long prose fields | ~455 KB |
+| `awards.json` | every award, every field | ~2.6 MB |
+| `meta.json` | freshness and counts only | <1 KB |
+
+**Unofficial mirror, not a University of Waterloo API.** No stability or availability guarantee.
+Refreshed ~3×/year (Jan 1 / May 1 / Sep 1, plus up to 24h of sync lag to jordanleis.com), so
+please cache rather than polling, and verify anything time-sensitive against the official directory.
+
 ## How it works
 
 - `scraper/` — a Python + Playwright scraper that drives the official directory's search UI (it's built on
