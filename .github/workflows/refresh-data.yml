@@ -63,22 +63,31 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
+          # Stash the whole directory, not named files: export_data.py also
+          # emits awards.slim.json and index.json, and anything not copied
+          # aside here is destroyed by the hard reset below.
           staged=$(mktemp -d)
-          cp site/data/awards.json site/data/meta.json "$staged/"
+          cp -r site/data "$staged/"
 
           git fetch origin "$GITHUB_REF_NAME"
           git reset --hard "origin/$GITHUB_REF_NAME"
 
-          cp "$staged/awards.json" "$staged/meta.json" site/data/
+          rm -rf site/data
+          cp -r "$staged/data" site/
 
-          if git diff --quiet -- site/data; then
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Stage first, then check the *index*. A bare `git diff --quiet`
+          # ignores untracked files, so the first run after adding a new
+          # export (slim/index) would report "unchanged", exit 0, and the new
+          # files would silently never ship. -A also stages deletions.
+          git add -A site/data
+          if git diff --cached --quiet; then
             echo "Award data is unchanged since the last refresh; nothing to commit."
             exit 0
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add site/data/awards.json site/data/meta.json
           git commit -m "Data refresh: ${{ github.run_id }}"
           git push origin "HEAD:$GITHUB_REF_NAME"
 
