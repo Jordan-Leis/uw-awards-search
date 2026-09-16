@@ -17,7 +17,9 @@ const AISearch = (() => {
   const ENDPOINT = "https://uw-awards-ai-search.jordanleis.workers.dev/interpret";
 
   const MAX_QUESTION_CHARS = 300;
-  const REQUEST_TIMEOUT_MS = 9000;
+  // Must exceed the Worker's own 8s upstream timeout plus network, so a slow
+  // Gemini call surfaces as the Worker's clean 502 rather than an abort here.
+  const REQUEST_TIMEOUT_MS = 12000;
   // After this many consecutive failures, stop calling for COOLDOWN_MS. Without
   // it, a dead Worker adds ~9s of dead air to every single Enter press.
   const BREAKER_THRESHOLD = 2;

@@ -30,17 +30,17 @@ year software engineering student"* — and the right filters get ticked. It's
 free for students (no account, no key) and free to run.
 
 The model **never sees any award data**. A Cloudflare Worker sends Gemini the
-question plus the filter vocabulary as an enum-constrained response schema,
-and Gemini returns which filter values apply; the browser applies them with
-the same code the dropdowns use. So it can't invent an award, costs ~1.5k
-tokens a query, and adds the one thing the data lacks: knowing that a CS
-student is in the Mathematics faculty and should see those faculty-wide
-awards too (which nearly triples their pool).
+question plus the filter vocabulary, Gemini returns which filter values apply,
+the Worker discards anything not in the vocabulary, and the browser applies
+the rest with the same code the dropdowns use. So it can't invent an award or
+a filter, costs ~1.2k tokens a query, and adds the one thing the data lacks:
+knowing that a CS student is in the Mathematics faculty and should see those
+faculty-wide awards too (which nearly triples their pool).
 
-Runs on Gemini's free tier (~1,500 requests/day, shared by all visitors) with
-an edge cache in front. When quota runs out the box silently falls back to
-keyword search. Setup, quota reality, and the abuse model are in
-[`ai-search/README.md`](ai-search/README.md).
+Runs on Gemini's free tier — two Flash-Lite models at 500 requests/day each,
+shared by all visitors — with an edge cache in front. When quota runs out the
+box silently falls back to keyword search. Setup, the real quota numbers, and
+the abuse model are in [`ai-search/README.md`](ai-search/README.md).
 
 ## Machine-readable endpoints (unofficial)
 

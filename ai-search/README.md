@@ -9,13 +9,17 @@ browser ──POST {q}──▶ Cloudflare Worker ──▶ Gemini (free tier)
    └── applies filters to data it already has ◀──┘
 ```
 
-**The model never sees any award data.** It receives the question plus a
-`responseSchema` whose enums are the site's filter vocabulary, and returns
-which values apply. The browser does the actual searching. Three things fall
-out of that:
+**The model never sees any award data.** It receives the question plus the
+site's filter vocabulary (five small filters as JSON-schema enums, the 129
+areas of study as a list in the system prompt) and returns which values
+apply. The Worker then **exact-matches every returned value against the
+vocabulary and discards anything else** — that validator, not the schema, is
+the guarantee; Google's own docs say to "always validate values in your
+application". The browser does the actual searching. Three things fall out:
 
-- it structurally **cannot invent an award** — it never sees one
-- each request is ~1.5k tokens, so the free tier's **requests-per-day**, not
+- it **cannot invent an award** — it never sees one, and it cannot invent a
+  filter value either, because unknown values are dropped
+- each request is ~1.2k tokens, so the free tier's **requests-per-day**, not
   tokens, is the limit that matters
 - the one thing it adds that the data lacks is faculty knowledge: that a
   Computer Science student should also see `Mathematics Faculty - All
@@ -26,10 +30,13 @@ out of that:
 | file | what |
 |---|---|
 | `worker.js` | the handler — CORS, throttles, cache, validation |
-| `prompt.js` | system prompt + response schema. Bump `PROMPT_VERSION` when you change answers |
+| `prompt.js` | system prompt + response schema + request body. Bump `PROMPT_VERSION` when you change answers |
 | `vocab.generated.js` | **generated** by `tools/gen_vocab.py` — never hand-edit |
 | `wrangler.toml` | Worker config. No secrets in it |
 | `.dev.vars` | local-only secrets. **Gitignored** |
+| `scripts/probe_gemini.py` | calls Gemini **directly**, bypassing the Worker — first thing to run when something breaks |
+| `scripts/bisect_request.py` | adds one request field at a time to find what Gemini rejects |
+| `scripts/contract_test.py` | 7 real questions through the Worker (local or live), asserting the interpretations |
 
 ---
 
@@ -48,26 +55,35 @@ runs out of quota it returns errors — it can never send you a bill.
 4. Click **Create API key**. When it asks for a Google Cloud project, choose
    **Create API key in new project** — this makes a free project for you
    without touching billing. Do **not** link a billing account.
-5. Copy the key. It starts with `AIza…`. Treat it like a password: it is
-   never committed, never pasted into chat, and never put in the site.
+5. Copy the key (currently they look like `AQ.Ab8…`, 53 characters). Treat
+   it like a password: it is never committed, never pasted into chat, and
+   never put in the site.
 
 **Confirm you are on the free tier:** in AI Studio, open the key's project
 and check the *Plan* column says **Free**. As long as no billing account is
 attached to that project, the hard stop is "AI switches off until tomorrow",
 never "you get charged".
 
-Free-tier limits (check the current numbers in AI Studio → *Rate limits*;
-Google changes them):
+**Which model — and the quota reality.** Google no longer publishes free-tier
+numbers; the only source of truth is your own account's dashboard at
+<https://aistudio.google.com/rate-limit>. On a new account in Sept 2026 it
+looked like this, and it is the reason the model choice is what it is:
 
-| limit | rough value | what it means here |
-|---|---|---|
-| requests / minute | ~10–15 | bursts of students briefly see keyword fallback |
-| requests / day | ~1,500 | the real ceiling; resets ~08:00 UTC (4 am Waterloo) |
-| tokens / minute | 250k | irrelevant — we use ~22k at the RPM cap |
+| model | RPM | RPD | verdict |
+|---|---|---|---|
+| **gemini-3.5-flash-lite** | 15 | **500** | primary |
+| **gemini-3.1-flash-lite** | 15 | **500** | failover — a *separate* daily pool |
+| every full Flash (3.5 / 3.6 / 3.7 / 3.8 / 3 / 2.5) | 5 | **20** | useless — 20 questions/day for the whole site |
+| gemini-2.5-flash | — | — | returns 404 "no longer available to new users" |
 
-Only **Flash** models are on the free tier (Pro was removed in April 2026).
-`gemini-2.5-flash` is the default; change `GEMINI_MODEL` in the Cloudflare
-dashboard if Google renames it, no redeploy needed.
+`GEMINI_MODEL` is a comma-separated list tried in order; the Worker moves to
+the next only on **429** (that model's day is used up) or **404** (Google
+retired it). So two Lite models ≈ **1,000 uncached questions/day**, the edge
+cache absorbs repeats on top, and daily quota resets at **midnight Pacific**.
+Change the list in the Cloudflare dashboard with no redeploy.
+
+Measured latency (Sept 2026, `scripts/probe_gemini.py`): 3.5-flash-lite
+median 1.7s, 3.1-flash-lite median 3.1s; edge cache hits ~100ms.
 
 ### 2. Get a free Cloudflare account
 
@@ -91,8 +107,15 @@ Then close and reopen the terminal so `node` and `npx` are on `PATH`.
 ```powershell
 cd ai-search
 npx wrangler login                     # opens a browser once
-npx wrangler secret put GEMINI_API_KEY # paste the AIza… key when prompted
+npx wrangler secret put GEMINI_API_KEY # paste the key when prompted
 npx wrangler deploy
+```
+
+Then prove it end to end — this is the step that catches everything:
+
+```powershell
+cd ..
+python ai-search/scripts/contract_test.py     # 9/9 expected
 ```
 
 `wrangler deploy` prints the Worker URL, e.g.
@@ -104,17 +127,58 @@ update that constant and redeploy the site.
 
 ```
 # ai-search/.dev.vars  (gitignored)
-GEMINI_API_KEY=AIza...
+GEMINI_API_KEY=<your key>
 ```
 
 ```powershell
 npx wrangler dev        # serves on http://localhost:8787
 ```
 
-Then in `site/js/ai-search.js` temporarily point `ENDPOINT` at
-`http://localhost:8787/interpret` and add `http://localhost:8000` (or
-whatever `python -m http.server` picks) to `ALLOWED_ORIGINS` in `worker.js`.
-**Revert both before committing.**
+Test the local Worker without touching any config — the contract test sends
+the production `Origin` header, which is all the Worker checks:
+
+```powershell
+python ai-search/scripts/contract_test.py --url http://localhost:8787/interpret
+```
+
+To drive it from the actual page instead, temporarily point `ENDPOINT` in
+`site/js/ai-search.js` at `http://localhost:8787/interpret` and add your
+`http://localhost:<port>` to `ALLOWED_ORIGINS` in `worker.js`. **Revert both
+before committing.**
+
+### When something breaks: go to Gemini directly first
+
+The Worker hides Gemini's reason behind a 502 on purpose (students don't need
+it). You do. Don't debug through the Worker — call Gemini with the exact
+request and read the real error:
+
+```powershell
+python ai-search/scripts/probe_gemini.py      # 5 questions x 2 models, full error bodies
+python ai-search/scripts/bisect_request.py    # which request field is rejected?
+npx wrangler tail                             # the Worker logs every Gemini status + message
+```
+
+Things learned the hard way, so you don't have to:
+
+- **`gemini … 404 … no longer available to new users`** → Google retired the
+  model. Edit `GEMINI_MODEL` in the dashboard. No deploy.
+- **A model with 20 RPD** (any full "Flash") burns its whole day in one test
+  run and then 429s. Only ever pick models the rate-limit page shows with a
+  real RPD.
+- **`Request contains an invalid argument`** with no detail → almost always
+  the schema. Gemini rejects any single `enum` over **122 values** (measured;
+  undocumented). That is why `areaOfStudy` is a plain string array with its
+  vocabulary in the prompt instead.
+- **`Unknown parameter 'response_format' at 'generation_config'`** →
+  `response_format` belongs at the **top level** of the body, whatever the
+  reference page implies.
+- **`thinking_budget` + `thinking_level` together** → 400. Only
+  `thinking_level` on Gemini 3.
+- **Slow or looping answers** → check nobody set `temperature` below 1.0; the
+  Gemini 3 guide explicitly warns against it.
+- **Cloudflare `error code: 1010`** from a script → the edge is rejecting the
+  client's User-Agent, not the Worker. Browsers are unaffected; send a
+  browser-like User-Agent from scripts.
 
 ---
 
@@ -148,8 +212,9 @@ npx wrangler tail
 ```
 
 Each response carries `"source":"ai"` or `"source":"cache"`. Cache hits cost
-no Gemini quota. If you see a burst of `upstream_unavailable` or
-`rate_limited`, that is the daily quota — it self-heals at the reset.
+no Gemini quota. The Worker logs `gemini ok model=…` on success and Google's
+full status + message on failure. A burst of `gemini 429` on both models is
+the daily quota — it self-heals at midnight Pacific.
 
 ---
 
@@ -158,8 +223,9 @@ no Gemini quota. If you see a burst of `upstream_unavailable` or
 This is deliberately **not** a general-purpose LLM proxy, and the reason is
 the response schema. Total attacker-controlled output per request is:
 
-- six arrays whose every value is enum-constrained to strings that are
-  already public in `site/data/index.json` — zero information gain
+- six arrays whose every value is validated against strings that are
+  already public in `site/data/index.json` (anything else is dropped) — zero
+  information gain
 - one string, `keywords`, stripped to `[a-z0-9 +\-']`, ≤5 words, ≤64 chars
 
 Jailbreaking the *prompt* cannot change the *schema*. The system prompt is
@@ -175,8 +241,8 @@ Honest residual risks:
 - **`keywords` is a real, if pathetic, side channel** — hence the charset
   filter and the 64-char cap. It is rendered with `textContent`, never
   `innerHTML`.
-- **Quota vandalism.** Anyone can burn the day's ~1,500 requests in a few
-  minutes, turning AI off until reset. Acceptable *precisely because* the
+- **Quota vandalism.** Anyone can burn the day's ~1,000 requests in a few
+  minutes, turning AI off until midnight Pacific. Acceptable *precisely because* the
   fallback is silent and the site keeps working. If you ever attach billing
   to the Gemini project this changes from "AI switches off" to "you get a
   bill" — set a hard cap and budget alert **first**.

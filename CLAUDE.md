@@ -64,6 +64,18 @@ missing one would blank the page for every visitor.
 - **Never add a free-text field to `RESPONSE_SCHEMA`** in
   `ai-search/prompt.js`. `keywords` is the only one, and it is capped and
   charset-stripped. A second one turns the endpoint into an open LLM relay.
+- **Debug Gemini directly, not through the Worker.** The Worker returns a
+  bare 502 by design. `python ai-search/scripts/probe_gemini.py` shows
+  Google's real error; `bisect_request.py` finds the rejected field. Never
+  change-and-redeploy on a guess.
+- **Gemini facts that are measured, not documented:** any single schema
+  `enum` over 122 values is rejected (so `areaOfStudy` is a plain string
+  array with its vocabulary in the prompt); `response_format` must be
+  top-level; on the free tier every full "Flash" model is 20 requests/day
+  and only the Flash-**Lite** models (500/day each) are usable. Check
+  <https://aistudio.google.com/rate-limit> before changing `GEMINI_MODEL`.
+- **Never set `temperature`** on Gemini 3 — the official guide says values
+  below 1.0 cause looping; it's what the 6-second timeouts were.
 - **`queryOverride` in `app.js` is tri-state.** `null` = search the box,
   `""` = search nothing (filters only). Collapsing them makes an AI query
   with no keywords Fuse-search the student's whole sentence.

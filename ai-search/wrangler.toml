@@ -18,9 +18,15 @@ workers_dev = true
 # to keyword search.
 ENABLED = "1"
 
-# Overridable in the dashboard so the model can be swapped without a code change
-# when Google renames or retires a free-tier model.
-GEMINI_MODEL = "gemini-2.5-flash"
+# Comma-separated, tried in order; the Worker moves to the next only on 429
+# (that model's daily quota is gone) or 404 (Google retired it). Each free-tier
+# model has its own requests-per-day pool, so two Lite models = 2x the daily
+# capacity. Overridable in the dashboard with no deploy.
+#
+# Pick from https://aistudio.google.com/rate-limit — only models showing a
+# real RPD. As of Sept 2026 on a new account the Flash-Lite models are 500/day;
+# every full "Flash" model (3.5, 3.6, 3.7, 3.8, 2.5) is 20/day and useless here.
+GEMINI_MODEL = "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
 
 [observability]
 enabled = true

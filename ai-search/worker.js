@@ -9,11 +9,17 @@
  *
  * - The model NEVER sees award data. It only picks filter values; the browser
  *   applies them to data it already loaded. So it cannot invent an award, and
- *   each request costs ~1.5k tokens, which puts us far under Gemini's
+ *   each request costs ~1.2k tokens, which puts us far under Gemini's
  *   tokens-per-minute ceiling and makes requests-per-day the binding limit.
  * - The vocabulary is compiled in (vocab.generated.js), never accepted from the
  *   client. It IS the validation allowlist — taking it from the caller would
- *   let an attacker authorise their own values.
+ *   let an attacker authorise their own values. validate() exact-matches every
+ *   value against it; the response schema only makes the model's first guess
+ *   more likely to be right.
+ * - Talks to the Interactions API (v1beta/interactions), not generateContent.
+ *   Google retired generateContent-era models for new accounts in 2026 and
+ *   Gemini 3 accepts different parameters; see prompt.js and README.md. When
+ *   Gemini misbehaves, run scripts/probe_gemini.py — do not debug via 502s.
  * - Every failure path is a graceful one: the site falls back to its existing
  *   keyword search, so an outage here is a small note, not a broken page.
  */
@@ -28,7 +34,10 @@ const ALLOWED_ORIGINS = new Set([
 
 const MAX_QUESTION_CHARS = 300;
 const MAX_BODY_BYTES = 1024;
-const GEMINI_TIMEOUT_MS = 6000;
+// ~2x the p95 measured against the slower failover model (4.2s for
+// gemini-3.1-flash-lite, Sept 2026; see scripts/probe_gemini.py). The browser
+// side waits longer than this so a Worker timeout surfaces as a clean 502.
+const GEMINI_TIMEOUT_MS = 8000;
 const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
 // Isolate-local throttles. These are leaky by construction (Cloudflare runs
@@ -37,7 +46,9 @@ const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 // is handled as a graceful fallback rather than an error.
 const PER_IP_PER_MIN = 20;
 const PER_IP_PER_DAY = 200;
-const GLOBAL_GEMINI_PER_MIN = 8;
+// Lite models are 15 RPM on the free tier; leave headroom because a failover
+// call shares the same minute.
+const GLOBAL_GEMINI_PER_MIN = 12;
 
 const ipMinute = new Map();
 const ipDay = new Map();
@@ -122,8 +133,17 @@ export default {
       return withCors(json({ ok: false, error: "upstream_unavailable" }, 502), allowedOrigin);
     }
 
-    const result = validate(raw);
+    let result;
+    try {
+      result = validate(raw);
+    } catch (e) {
+      // Malformed / blocked / truncated model output. Not cached, so a
+      // transient bad answer doesn't outlive itself.
+      console.error(`gemini output rejected: ${e.message}`);
+      return withCors(json({ ok: false, error: "upstream_unavailable" }, 502), allowedOrigin);
+    }
     result.source = "ai";
+    console.log(`gemini ok model=${raw._model} dropped=${result.dropped}`);
 
     // Cache successes only. A cached error would outlive the outage that caused it.
     ctx.waitUntil(
@@ -238,26 +258,66 @@ function checkGeminiBudget() {
 
 /* ------------------------------------------------------------------ gemini */
 
+const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/interactions";
+const DEFAULT_MODELS = "gemini-3.5-flash-lite,gemini-3.1-flash-lite";
+
+// Statuses on which it is worth trying the next model in the list: quota
+// exhausted, or the model has been retired. Anything else (400, 5xx, timeout)
+// would fail the same way on every model and only burn quota twice.
+const FAILOVER_STATUSES = new Set([429, 404]);
+
+/**
+ * Try each configured model in order. On the free tier every model has its
+ * own requests-per-day pool, so a second Lite model is a second 500/day for
+ * free — and when Google retires one (they retired 2.5-flash for new accounts
+ * with a 404 in Sept 2026), the site keeps working on the next.
+ */
 async function callGemini(question, env) {
-  const model = env.GEMINI_MODEL || "gemini-2.5-flash";
+  const models = (env.GEMINI_MODEL || DEFAULT_MODELS).split(",").map((m) => m.trim()).filter(Boolean);
+  let lastError = null;
+  for (const model of models) {
+    try {
+      return await callGeminiModel(question, model, env);
+    } catch (e) {
+      lastError = e;
+      if (!FAILOVER_STATUSES.has(e.status)) throw e;
+      console.warn(`gemini ${e.status} on ${model}; trying next model`);
+    }
+  }
+  throw lastError || new Error("no_models_configured");
+}
+
+async function callGeminiModel(question, model, env) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          // Header, not a query param, so the key can't end up in a URL log.
-          "x-goog-api-key": env.GEMINI_API_KEY,
-        },
-        body: JSON.stringify(buildRequestBody(question)),
-        signal: controller.signal,
-      }
-    );
-    if (!response.ok) throw new Error(`gemini_${response.status}`);
-    return await response.json();
+    const response = await fetch(GEMINI_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // Header, not a query param, so the key can't end up in a URL log.
+        "x-goog-api-key": env.GEMINI_API_KEY,
+      },
+      body: JSON.stringify(buildRequestBody(question, model)),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      // Surface Google's reason in `wrangler tail`. The body is Google's error
+      // JSON (code + message); the API key travels in a header and is never
+      // echoed back, so this is safe to log. Truncated: quota errors include
+      // long retry-info blobs.
+      const detail = (await response.text().catch(() => "")).slice(0, 600);
+      console.error(`gemini ${response.status} for model=${model}: ${detail}`);
+      const err = new Error(`gemini_${response.status}`);
+      err.status = response.status;
+      throw err;
+    }
+    const payload = await response.json();
+    payload._model = model;
+    return payload;
+  } catch (e) {
+    if (e && e.name === "AbortError") console.error(`gemini timeout after ${GEMINI_TIMEOUT_MS}ms on ${model}`);
+    throw e;
   } finally {
     clearTimeout(timer);
   }
@@ -266,16 +326,33 @@ async function callGemini(question, env) {
 /* -------------------------------------------------------------- validation */
 
 /**
- * Treat the model as untrusted even though the schema constrains it: a 200 can
- * still carry a safety block, a truncation, or malformed JSON.
+ * Treat the model as untrusted even though the schema guides it: a 200 can
+ * still carry a safety block, a truncation, or malformed JSON — and the docs
+ * themselves say "always validate values in your application".
+ *
+ * Interactions response shape (https://ai.google.dev/api/interactions-api):
+ *   { status: "completed" | "incomplete" | "failed" | ...,
+ *     steps: [{ type: "model_output", content: [{ type: "text", text }] }, ...] }
+ * "incomplete" means max_output_tokens was hit; "failed" carries `errors`.
  */
 export function validate(payload) {
-  const candidate = payload && payload.candidates && payload.candidates[0];
-  if (!candidate || candidate.finishReason !== "STOP") throw new Error("bad_finish_reason");
+  if (!payload || typeof payload !== "object") throw new Error("no_payload");
+  if (payload.status !== "completed") {
+    console.error(`gemini interaction status=${payload.status}`
+      + (payload.errors ? ` errors=${JSON.stringify(payload.errors).slice(0, 300)}` : ""));
+    throw new Error(`status_${payload.status || "missing"}`);
+  }
 
-  const text = candidate.content && candidate.content.parts && candidate.content.parts[0]
-    && candidate.content.parts[0].text;
-  if (typeof text !== "string") throw new Error("no_text_part");
+  let text = null;
+  for (const step of payload.steps || []) {
+    if (step && step.type === "model_output") {
+      for (const c of step.content || []) {
+        if (c && c.type === "text" && typeof c.text === "string") { text = c.text; break; }
+      }
+    }
+    if (text !== null) break;
+  }
+  if (text === null) throw new Error("no_text_output");
 
   let parsed;
   try {
