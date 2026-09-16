@@ -15,6 +15,14 @@ scraper/**/__pycache__/
 tools/profile.json
 tools/profile.local.json
 
+# AI search Worker — local secrets and wrangler's scratch space. The Gemini key
+# lives ONLY in .dev.vars locally and as a Cloudflare secret in production.
+# The repo is public: a key that appears in any diff is burned and must be
+# rotated in AI Studio immediately.
+ai-search/.dev.vars
+ai-search/.wrangler/
+ai-search/node_modules/
+
 # OS cruft
 .DS_Store
 Thumbs.db

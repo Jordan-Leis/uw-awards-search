@@ -1,0 +1,32 @@
+# Cloudflare Worker config for the AI search endpoint.
+#
+# Safe to commit: it holds NO secrets. GEMINI_API_KEY is set out-of-band with
+#   npx wrangler secret put GEMINI_API_KEY
+# and locally via ai-search/.dev.vars, which is gitignored.
+
+name = "uw-awards-ai-search"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Cache API + fetch only — no KV, no D1, no Durable Objects, so this stays
+# entirely inside Cloudflare's free tier.
+workers_dev = true
+
+[vars]
+# Kill switch. Set to "0" in the Cloudflare dashboard (Settings -> Variables) to
+# turn the AI feature off instantly with no deploy; the site silently falls back
+# to keyword search.
+ENABLED = "1"
+
+# Comma-separated, tried in order; the Worker moves to the next only on 429
+# (that model's daily quota is gone) or 404 (Google retired it). Each free-tier
+# model has its own requests-per-day pool, so two Lite models = 2x the daily
+# capacity. Overridable in the dashboard with no deploy.
+#
+# Pick from https://aistudio.google.com/rate-limit — only models showing a
+# real RPD. As of Sept 2026 on a new account the Flash-Lite models are 500/day;
+# every full "Flash" model (3.5, 3.6, 3.7, 3.8, 2.5) is 20/day and useless here.
+GEMINI_MODEL = "gemini-3.5-flash-lite,gemini-3.1-flash-lite"
+
+[observability]
+enabled = true

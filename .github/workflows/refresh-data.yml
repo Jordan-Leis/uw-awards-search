@@ -75,6 +75,13 @@ jobs:
           rm -rf site/data
           cp -r "$staged/data" site/
 
+          # The AI Worker validates Gemini's output against this vocabulary,
+          # so it must track the data. Generated here, after the reset, so it
+          # is derived from exactly the index.json being committed. Deploying
+          # it stays manual (see the summary below): automating that would
+          # need a Cloudflare token in a public repo for a 3x/year step.
+          python tools/gen_vocab.py
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -82,10 +89,30 @@ jobs:
           # ignores untracked files, so the first run after adding a new
           # export (slim/index) would report "unchanged", exit 0, and the new
           # files would silently never ship. -A also stages deletions.
-          git add -A site/data
+          git add -A site/data ai-search/vocab.generated.js
           if git diff --cached --quiet; then
             echo "Award data is unchanged since the last refresh; nothing to commit."
             exit 0
+          fi
+
+          if git diff --cached --quiet -- ai-search/vocab.generated.js; then
+            {
+              echo "### AI search vocabulary"
+              echo "Unchanged — no filter values were added or removed. The deployed Worker is still current."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### ⚠️ AI search vocabulary changed — redeploy the Worker"
+              echo
+              echo "This refresh added or removed filter values. The deployed Worker keeps validating"
+              echo "against the old list until you run:"
+              echo
+              echo '```'
+              echo "git pull && cd ai-search && npx wrangler deploy"
+              echo '```'
+              echo
+              echo "Until then, any new value Gemini picks is dropped (results narrower, never wrong)."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
           git commit -m "Data refresh: ${{ github.run_id }}"
