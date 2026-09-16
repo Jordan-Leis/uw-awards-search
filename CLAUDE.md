@@ -45,7 +45,28 @@ or commit it.** `tools/profile.example.json` is the safe, committed template.
   jordanleis.com/awards-database.
 - `.github/workflows/refresh-data.yml` — scheduled scrape (Jan/May/Sep 1).
   `deploy-site.yml` — deploy without re-scraping.
+- `ai-search/` — Cloudflare Worker that turns a natural-language question
+  into filter values via Gemini's free tier. `ai-search/README.md` has the
+  deploy runbook and the abuse model.
 
-Do not make `site/js/*` fetch anything beyond `data/awards.json` and
-`data/meta.json`; the other files under `site/data/` are for external
-consumers, and a missing one would blank the page for every visitor.
+Do not make `site/js/*` fetch anything beyond `data/awards.json`,
+`data/meta.json`, and the AI Worker's `/interpret` endpoint (which is
+optional — `app.js` guards on it and the page must work identically without
+it). The other files under `site/data/` are for external consumers, and a
+missing one would blank the page for every visitor.
+
+## AI search — things that are easy to get wrong
+
+- **Never hand-edit `ai-search/vocab.generated.js`.** It is generated from
+  `site/data/index.json` by `tools/gen_vocab.py` and is the validation
+  allowlist. The Worker must be redeployed (`npx wrangler deploy`) after a
+  data refresh for new filter values to be accepted.
+- **Never add a free-text field to `RESPONSE_SCHEMA`** in
+  `ai-search/prompt.js`. `keywords` is the only one, and it is capped and
+  charset-stripped. A second one turns the endpoint into an open LLM relay.
+- **`queryOverride` in `app.js` is tri-state.** `null` = search the box,
+  `""` = search nothing (filters only). Collapsing them makes an AI query
+  with no keywords Fuse-search the student's whole sentence.
+- `ai-search.js` must stay optional: `app.js` calls it last, inside a guard,
+  and every element it uses ships `hidden`. Renaming the file must be a
+  non-event.

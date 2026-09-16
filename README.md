@@ -23,6 +23,25 @@ the 2.6 MB dataset, so results fit in a chat or an AI assistant's context.
 financial need and grade band. See [`tools/README.md`](tools/README.md) for the full reference,
 including why faculty-wide expansion nearly triples the eligible pool.
 
+## Ask it a question (AI search)
+
+Type a sentence into the search box and press Enter — *"bursaries for a 2nd
+year software engineering student"* — and the right filters get ticked. It's
+free for students (no account, no key) and free to run.
+
+The model **never sees any award data**. A Cloudflare Worker sends Gemini the
+question plus the filter vocabulary as an enum-constrained response schema,
+and Gemini returns which filter values apply; the browser applies them with
+the same code the dropdowns use. So it can't invent an award, costs ~1.5k
+tokens a query, and adds the one thing the data lacks: knowing that a CS
+student is in the Mathematics faculty and should see those faculty-wide
+awards too (which nearly triples their pool).
+
+Runs on Gemini's free tier (~1,500 requests/day, shared by all visitors) with
+an edge cache in front. When quota runs out the box silently falls back to
+keyword search. Setup, quota reality, and the abuse model are in
+[`ai-search/README.md`](ai-search/README.md).
+
 ## Machine-readable endpoints (unofficial)
 
 Served from both `https://jordanleis.com/awards-database/data/` and

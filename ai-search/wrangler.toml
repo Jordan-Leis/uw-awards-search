@@ -1,0 +1,26 @@
+# Cloudflare Worker config for the AI search endpoint.
+#
+# Safe to commit: it holds NO secrets. GEMINI_API_KEY is set out-of-band with
+#   npx wrangler secret put GEMINI_API_KEY
+# and locally via ai-search/.dev.vars, which is gitignored.
+
+name = "uw-awards-ai-search"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Cache API + fetch only — no KV, no D1, no Durable Objects, so this stays
+# entirely inside Cloudflare's free tier.
+workers_dev = true
+
+[vars]
+# Kill switch. Set to "0" in the Cloudflare dashboard (Settings -> Variables) to
+# turn the AI feature off instantly with no deploy; the site silently falls back
+# to keyword search.
+ENABLED = "1"
+
+# Overridable in the dashboard so the model can be swapped without a code change
+# when Google renames or retires a free-tier model.
+GEMINI_MODEL = "gemini-2.5-flash"
+
+[observability]
+enabled = true
