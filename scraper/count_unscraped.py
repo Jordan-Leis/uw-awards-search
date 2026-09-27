@@ -9,8 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from waterloo_awards import db
-from waterloo_awards.config import DB_PATH
+from waterloo_awards.config import DB_PATH, SOURCE_ID
 
 conn = db.connect(DB_PATH)
-print(db.count_unscraped(conn))
+print(db.count_unscraped(conn, SOURCE_ID))
 conn.close()

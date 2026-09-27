@@ -1,0 +1,71 @@
+name: Tests
+
+# Fast, dependency-free checks that do not need a scrape. The eligibility
+# matcher is driven entirely by tests/fixtures/match_cases.json, so this runs
+# in seconds and is the guard against the two failure modes that actually cost
+# a student money:
+#   - the matcher wrongly excluding someone from an award they could have won
+#   - the CLI and the browser matcher drifting apart (which has already
+#     happened once between search.js and find_awards.py)
+on:
+  workflow_dispatch: {}
+  pull_request:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/**'
+      - 'tests/**'
+      - 'scraper/**'
+      - 'sources/**'
+      - 'site/js/**'
+      - '.github/workflows/tests.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Deliberately no pip install: tools/ and tests/ are stdlib-only, and a
+      # test run that needs dependencies is a signal that constraint slipped.
+      - name: Eligibility matcher contract
+        run: python3 -m unittest discover -s tests -v
+
+      # The registry loader is the one place that needs a dependency, because
+      # sources/*.yaml is hand-authored and YAML is far kinder to edit than
+      # JSON for that. It is build-time only — export_data.py compiles it to
+      # site/data/sources.json, which is what the frontend and tools/ read.
+      - name: Install registry dependency
+        run: python3 -m pip install --disable-pip-version-check 'PyYAML==6.0.1'
+
+      - name: Source registry is well-formed
+        working-directory: scraper
+        run: |
+          python3 -c "
+          import sys; sys.path.insert(0, '.')
+          from waterloo_awards import sources
+          r = sources.load_all()
+          print(f'{len(sources.active(r))} active, {len(sources.blocked(r))} blocked')
+          for sid, e in sorted(r.items()):
+              print(f'  {sid}: {e[\"status\"]}')
+          "
+
+      - name: Golden set labels validate
+        run: python3 tools/make_golden_set.py --report
+
+      - name: Python modules compile
+        run: python3 -m compileall -q tools scraper tests
+
+      - name: JavaScript parses
+        run: for f in site/js/*.js; do node --check "$f"; done
+
+      # Syntax checking is not enough: it cannot see that the browser matcher
+      # and the Python matcher have drifted apart, and it did not catch
+      # `filterControls` being declared const and then reassigned.
+      - name: search.js filter semantics match facets.py
+        run: node tests/test_search_js.js

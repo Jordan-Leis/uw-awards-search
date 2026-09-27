@@ -17,6 +17,9 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import facets  # the single definition of what is filterable
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA = REPO_ROOT / "site" / "data" / "awards.json"
 DEFAULT_PROFILE = Path(__file__).resolve().parent / "profile.json"
@@ -169,30 +172,30 @@ def parse_value(award):
     return None
 
 
+# find_awards' CLI flags -> the facet definitions in tools/facets.py.
+# Filtering is delegated there so the CLI, the website and the Worker cannot
+# disagree about who qualifies. They have twice: first when search.js treated
+# affiliation as an OR facet while this file treated it as a gate, and again
+# when the gate was relaxed on one side only.
+_FILTER_KEY_BY_ARG = {
+    "career": "career",
+    "level": "level",
+    "term": "term",
+    "type": "awardType",
+    "areas": "areaOfStudy",
+    "affiliation": "affiliation",
+}
+
+
 def passes_filters(award, f):
-    def any_of(award_values, selected):
-        if not selected:
-            return True
-        return bool(set(award_values or []) & set(selected))
-
-    if f["career"] and award.get("career") not in f["career"]:
-        return False
-    if not any_of(award.get("levels"), f["level"]):
-        return False
-    if not any_of(award.get("terms"), f["term"]):
-        return False
-    if not any_of(award.get("award_types"), f["type"]):
-        return False
-    if f["areas"] and not (set(award.get("areas_of_study") or []) & f["areas"]):
-        return False
-
-    # Affiliation is an eligibility gate, not a facet: an award tagged
-    # e.g. ["Women"] is restricted to that group. An award with no
-    # affiliation tag is open to everyone and always passes.
-    award_affs = set(award.get("affiliations") or [])
-    if award_affs:
-        allowed = set(f["affiliation"] or [])
-        if not (award_affs & allowed):
+    for arg, filter_key in _FILTER_KEY_BY_ARG.items():
+        facet = facets.BY_FILTER_KEY[filter_key]
+        selected = f.get(arg)
+        if isinstance(selected, set):
+            selected = sorted(selected)
+        # find_awards is always answering "what can this student win?", never
+        # "show me awards restricted to X" — it is driven by profile.json.
+        if not facets.matches(award, facet, selected, mode=facets.PROFILE):
             return False
 
     if f["min_value"] is not None:
@@ -349,14 +352,30 @@ def print_block(rows, header_lines):
 
 
 def print_detail(awards, ids):
-    by_id = {a["award_id"]: a for a in awards}
+    # Accept either the globally unique award_uid ("<source>:<native id>") or a
+    # bare award_id. The bare form is only unique within one source, so once a
+    # second source lands it can be ambiguous — say so rather than silently
+    # picking whichever came first.
+    by_uid = {a["award_uid"]: a for a in awards if a.get("award_uid")}
+    by_award_id = {}
+    for a in awards:
+        by_award_id.setdefault(a["award_id"], []).append(a)
+
     for aid in ids:
-        a = by_id.get(aid)
+        a = by_uid.get(aid)
+        if a is None:
+            matches = by_award_id.get(aid, [])
+            if len(matches) > 1:
+                uids = ", ".join(m["award_uid"] for m in matches)
+                print(f"# {aid}: ambiguous across sources — use one of: {uids}",
+                      file=sys.stderr)
+                continue
+            a = matches[0] if matches else None
         if not a:
             print(f"# {aid}: not found", file=sys.stderr)
             continue
         print("=" * 72)
-        print(f"{a.get('award_name')}   (id {a['award_id']})")
+        print(f"{a.get('award_name')}   (id {a.get('award_uid') or a['award_id']})")
         print("=" * 72)
         for label, key in [
             ("Career", "career"), ("Level", "level"), ("Term", "application_selection"),

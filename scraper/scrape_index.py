@@ -23,7 +23,7 @@ from waterloo_awards.browser import (
     clear_select_filter, run_search, scrape_grid_rows, parse_rowcount_text,
 )
 from waterloo_awards.config import (
-    DB_PATH, CAREER_LEVEL_PAIRS, AWARD_TYPE_CODES, SELECTION_PROCESS_CODES, ROW_CAP,
+    DB_PATH, SOURCE_ID, CAREER_LEVEL_PAIRS, AWARD_TYPE_CODES, SELECTION_PROCESS_CODES, ROW_CAP,
 )
 
 # Must precede basicConfig: its FileHandler opens the log file at import
@@ -60,7 +60,7 @@ def enumerate_combo(page, conn, filters: dict, remaining_dims: list, depth=0, ap
     if not capped:
         log.info(f"{'  '*depth}{label}: {rc_text!r} -> {len(rows)} rows (complete)")
         for r in rows:
-            db.upsert_index_row(conn, r["award_id"], r["award_name"], r["level"], r["career"], r["application_selection"])
+            db.upsert_index_row(conn, SOURCE_ID, r["award_id"], r["award_name"], r["level"], r["career"], r["application_selection"])
         return len(rows)
 
     if not remaining_dims:
@@ -70,7 +70,7 @@ def enumerate_combo(page, conn, filters: dict, remaining_dims: list, depth=0, ap
         )
         incomplete_leaves.append((dict(filters), rc_text, len(rows), total))
         for r in rows:
-            db.upsert_index_row(conn, r["award_id"], r["award_name"], r["level"], r["career"], r["application_selection"])
+            db.upsert_index_row(conn, SOURCE_ID, r["award_id"], r["award_name"], r["level"], r["career"], r["application_selection"])
         return len(rows)
 
     log.info(f"{'  '*depth}{label}: {rc_text!r} -> capped, splitting further by {remaining_dims[0][0]!r}")
@@ -123,7 +123,7 @@ def main():
 
         browser.close()
 
-    unique_count = db.count_all(conn)
+    unique_count = db.count_all(conn, SOURCE_ID)
     log.info(f"Sum of per-combo captures (with overlap from multi-level awards): {grand_total}")
     log.info(f"Unique awards in index after dedup: {unique_count}")
 

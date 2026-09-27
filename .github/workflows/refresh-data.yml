@@ -49,6 +49,28 @@ jobs:
             fi
           done
 
+      # Every non-UW source runs through the generic adapter runner. UW keeps
+      # its own two-pass entry points above because it needs a browser;
+      # everything else is static HTML and goes through run_adapter.py, which
+      # enforces robots.txt per URL and refuses any source marked blocked.
+      #
+      # Sources marked `planned` in sources/ are skipped here and by the
+      # export's validation gate, so registering a source is separate from
+      # turning it on.
+      - name: Run source adapters
+        run: |
+          for source in $(python - <<'EOF'
+          import sys; sys.path.insert(0, '.')
+          from waterloo_awards import sources
+          registry = sources.load_all()
+          print(" ".join(sid for sid, e in sorted(sources.active(registry).items())
+                         if e.get("adapter") != "playwright_uw"))
+          EOF
+          ); do
+            echo "=== adapter: $source ==="
+            python run_adapter.py "$source" --rate-limit 1.0
+          done
+
       - name: Export data (validation gate — fails the job on a bad scrape)
         run: python export_data.py
 

@@ -19,7 +19,7 @@ from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 sys.path.insert(0, str(Path(__file__).parent))
 from waterloo_awards import db
 from waterloo_awards.browser import goto_award_detail, read_detail_fields
-from waterloo_awards.config import DB_PATH
+from waterloo_awards.config import DB_PATH, SOURCE_ID
 
 # Must precede basicConfig: its FileHandler opens the log file at import
 # time, which fails on a fresh checkout where logs/ does not exist yet.
@@ -50,7 +50,7 @@ def fetch_one(page, award_id, attempts=2):
 
 def main():
     conn = db.connect(DB_PATH)
-    todo = db.unscraped_award_ids(conn)
+    todo = db.unscraped_native_ids(conn, SOURCE_ID)
     total_todo = len(todo)
     log.info(f"{total_todo} award(s) need details fetched.")
 
@@ -71,11 +71,11 @@ def main():
         for i, award_id in enumerate(todo, 1):
             try:
                 fields = fetch_one(page, award_id)
-                db.upsert_detail_row(conn, award_id, fields)
+                db.upsert_detail_row(conn, SOURCE_ID, award_id, fields)
                 ok_count += 1
             except Exception as e:
                 log.error(f"{award_id}: FAILED after retries: {e}")
-                db.mark_error(conn, award_id, str(e))
+                db.mark_error(conn, SOURCE_ID, award_id, str(e))
                 fail_count += 1
                 # A hard failure sometimes means the page/session got into a
                 # bad state (e.g. an unexpected redirect); recycle the page.
@@ -97,7 +97,7 @@ def main():
         browser.close()
 
     log.info(f"Done. {ok_count} succeeded, {fail_count} failed.")
-    remaining_unscraped = db.count_unscraped(conn)
+    remaining_unscraped = db.count_unscraped(conn, SOURCE_ID)
     if remaining_unscraped:
         log.info(f"{remaining_unscraped} award(s) still unscraped (failures keep scraped_at NULL) "
                  f"— rerun this script to retry them.")

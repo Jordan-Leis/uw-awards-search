@@ -1,0 +1,54 @@
+# Alberta Student Aid — the province's own published scholarship list.
+#
+# Small (55 awards) but the highest-relevance source in the project for an
+# Alberta resident studying anywhere, because several of these awards travel
+# with the student rather than being tied to an Alberta institution.
+#
+# Two awards here matter more than the rest:
+#
+#   Alexander Rutherford Scholarship — explicitly usable at an eligible
+#   post-secondary school anywhere, given 12 months of Alberta residency. The
+#   single highest-value award in this project for a UW student from Alberta.
+#
+#   Louise McKinney "Study Outside Alberta" — looks tailor-made for the same
+#   student and is not: it requires that "the program of study must not be
+#   offered in Alberta", and Electrical/Computer Engineering is offered at both
+#   UofA and UCalgary. It is the canonical false-positive test case.
+
+id: alberta-student-aid
+name: Alberta Student Aid Scholarships
+short_name: Alberta Student Aid
+status: active
+
+adapter: alberta_student_aid
+url: https://studentaid.alberta.ca/scholarships/?c=all
+source_url: https://studentaid.alberta.ca/scholarships/
+
+robots:
+  checked: 2026-09-27
+  allowed: true
+  note: >-
+    /robots.txt returns a Government of Alberta error page rather than a robots
+    file, i.e. no directives exist. Verified in code at fetch time by
+    adapters/http.PoliteFetcher, not just here.
+
+refresh: triannual
+
+# Deliberately low: this source publishes ~55 awards, so the gate is only
+# guarding against a layout change that silently yields zero or a handful.
+min_awards: 45
+min_scraped_fraction: 0.9
+
+# True of every award from this source, and mostly not restated per award.
+defaults:
+  residency:
+    value: [AB]
+    confidence: 0.9
+    src: >-
+      Implicit: Alberta Student Aid scholarships require Alberta residency.
+      Most detail pages restate this, but the few that do not still require it.
+
+disclaimer: >-
+  Unofficial mirror of the Alberta Student Aid scholarship listings. Not
+  affiliated with or endorsed by the Government of Alberta. Verify anything
+  time-sensitive against https://studentaid.alberta.ca/scholarships/.

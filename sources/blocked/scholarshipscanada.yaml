@@ -1,0 +1,42 @@
+# EXCLUDED — crawl permission could not be established either way.
+#
+# ScholarshipsCanada is one of the largest Canadian aggregators (700+ awards
+# listed publicly, "tens of thousands" claimed in marketing). Browsing does
+# not require an account and the filter surface suggests structured backing
+# fields (Citizenship, DegreeType, StudyField, Heritage, Gender as query
+# params), which would make it valuable.
+#
+# But permission is genuinely UNKNOWN, not permissive:
+#   - Cloudflare returns 403 even for /robots.txt, so the crawl directives
+#     cannot be read at all.
+#   - The Terms of Service page 404s.
+#
+# "I could not read the rules" is not the same as "there are no rules." An
+# unreadable robots.txt is treated as disallow rather than allow. Resolve by
+# contacting the operator, not by retrying from a different IP.
+
+id: scholarshipscanada
+name: ScholarshipsCanada.com
+short_name: ScholarshipsCanada
+status: blocked
+
+url: https://www.scholarshipscanada.com/
+source_url: https://www.scholarshipscanada.com/
+manual_check_url: https://www.scholarshipscanada.com/Scholarships/
+
+blocked_reason: >-
+  Crawl permission unverifiable — Cloudflare 403s /robots.txt and the Terms of
+  Service page 404s (checked 2026-09-26). Unreadable directives are treated as
+  disallow. Resolve by contacting the operator for written permission.
+
+robots:
+  checked: 2026-09-26
+  allowed: null
+  note: "403 from Cloudflare; directives unreadable"
+
+notes:
+  estimated_awards: 700
+  tech: "ASP.NET WebForms (.aspx)"
+  next_step: >-
+    Email the operator for API or bulk-data access. They have a commercial
+    interest in referrals, so a data-sharing arrangement is plausible.

@@ -1,0 +1,599 @@
+{
+  "_comment": [
+    "The eligibility matcher's contract. tools/eligibility.py and (once it exists)",
+    "site/js/eligibility.js are both run against this file, so the CLI and the",
+    "browser cannot drift apart the way search.js and find_awards.py already have.",
+    "",
+    "Cases marked 'grounded' are taken from award text that actually appears in",
+    "site/data/awards.json, not invented. Add a case here before fixing any",
+    "matcher bug."
+  ],
+  "profiles": {
+    "jordan": {
+      "_comment": "The first-pass persona: Alberta resident, Canadian citizen, UW electrical/computer engineering, 4-year bachelor's. identity:[\"none\"] is an affirmative declaration that no identity category applies, which is what lets women-only awards resolve to excluded rather than unknown. program lists the FACULTY ('engineering') alongside the specific plans: the matcher has no program->faculty hierarchy yet, so a faculty-wide award tagged 'engineering' would otherwise fail to intersect and be wrongly excluded.",
+      "citizenship": [
+        "citizen"
+      ],
+      "residency": [
+        "AB"
+      ],
+      "institution": [
+        "university-of-waterloo"
+      ],
+      "program": [
+        "electrical-engineering",
+        "computer-engineering",
+        "engineering"
+      ],
+      "year": [
+        3
+      ],
+      "level": [
+        "undergraduate"
+      ],
+      "identity": [
+        "none"
+      ],
+      "gpa": 78,
+      "financial_need": false,
+      "full_time": true
+    },
+    "sparse": {
+      "_comment": "A student who has filled in almost nothing. Nearly everything should be UNKNOWN, never EXCLUDED.",
+      "institution": [
+        "university-of-waterloo"
+      ]
+    },
+    "ontario_se": {
+      "_comment": "Ontario resident in Software Engineering, for the exclusion cases.",
+      "citizenship": [
+        "citizen"
+      ],
+      "residency": [
+        "ON"
+      ],
+      "institution": [
+        "university-of-waterloo"
+      ],
+      "program": [
+        "software-engineering",
+        "engineering",
+        "mathematics"
+      ],
+      "year": [
+        2
+      ],
+      "level": [
+        "undergraduate"
+      ],
+      "identity": [
+        "none"
+      ],
+      "gpa": 82,
+      "financial_need": true,
+      "full_time": true
+    },
+    "empty_lists": {
+      "_comment": "A profile whose list fields were initialised to [] and never filled in. Must behave as unanswered.",
+      "institution": [
+        "university-of-waterloo"
+      ],
+      "citizenship": [],
+      "residency": [],
+      "program": [],
+      "year": [],
+      "identity": []
+    }
+  },
+  "cases": [
+    {
+      "name": "ontario-residency-excludes-alberta-resident",
+      "grounded": "Hira and Kamal Ahuja Graduate Engineering Award (202601284)",
+      "why": "The single most consequential false positive for this persona: UW awards gated on Ontario residency currently show up for an Alberta student.",
+      "profile": "jordan",
+      "award": {
+        "eligibility": {
+          "residency": {
+            "value": [
+              "ON"
+            ],
+            "confidence": 0.95,
+            "src": "Must be a Canadian Citizen/Permanent Resident, as well as an Ontario resident (must have resided in Ontario for 12 months prior to beginning their postsecondary education)."
+          }
+        }
+      },
+      "expect": {
+        "verdict": "excluded",
+        "excluded_fields": [
+          "residency"
+        ]
+      }
+    },
+    {
+      "name": "program-exclusion-beats-faculty-inclusion",
+      "grounded": "Joe C. Lee Math Entrepreneurial Scholarship (202600521)",
+      "why": "'Year Two or Three in the Faculty of Math (excluding CFM and Software Engineering)'. An extractor that only reads the inclusion marks an SE student eligible. This is the Louise McKinney trap inside UW's own data.",
+      "profile": "ontario_se",
+      "award": {
+        "eligibility": {
+          "program": {
+            "value": [
+              "any"
+            ],
+            "confidence": 0.9,
+            "src": "Year Two or Three in the Faculty of Math"
+          },
+          "program_excluded": {
+            "value": [
+              "software-engineering",
+              "computing-financial-management"
+            ],
+            "confidence": 0.95,
+            "src": "Year Two or Three in the Faculty of Math (excluding CFM and Software Engineering)"
+          }
+        }
+      },
+      "expect": {
+        "verdict": "excluded",
+        "excluded_fields": [
+          "program_excluded"
+        ]
+      }
+    },
+    {
+      "name": "silence-on-citizenship-does-not-constrain",
+      "why": "Only 7.2% of awards mention citizenship. Absence must not be read as a requirement.",
+      "profile": "jordan",
+      "award": {
+        "eligibility": {
+          "level": {
+            "value": [
+              "undergraduate"
+            ],
+            "confidence": 0.99,
+            "src": "Open to undergraduate students."
+          }
+        }
+      },
+      "expect": {
+        "verdict": "eligible",
+        "excluded_fields": [],
+        "unknown_fields": []
+      }
+    },
+    {
+      "name": "unanswered-profile-field-is-unknown-not-excluded",
+      "why": "A student who has not told us their residency must not be silently excluded from residency-gated awards.",
+      "profile": "sparse",
+      "award": {
+        "eligibility": {
+          "residency": {
+            "value": [
+              "AB"
+            ],
+            "confidence": 0.95,
+            "src": "Open to residents of Alberta."
+          }
+        }
+      },
+      "expect": {
+        "verdict": "unknown",
+        "unknown_fields": [
+          "residency"
+        ],
+        "excluded_fields": []
+      }
+    },
+    {
+      "name": "low-confidence-never-excludes",
+      "why": "A false exclusion silently costs money. Below the confidence threshold the worst an extraction may do is demand a manual check.",
+      "profile": "jordan",
+      "award": {
+        "eligibility": {
+          "residency": {
+            "value": [
+              "ON"
+            ],
+            "confidence": 0.4,
+            "src": "vaguely worded sentence about Ontario"
+          }
+        }
+      },
+      "expect": {
+        "verdict": "unknown",
+        "unknown_fields": [
+          "residency"
+        ],
+        "excluded_fields": []
+      }
+    },
+    {
+      "name": "no-extraction-yet-is-unknown-not-eligible",
+      "why": "'We have not looked at this award yet' must never render as 'you qualify'.",
+      "profile": "jordan",
+      "award": {
+        "eligibility": null
+      },
+      "expect": {
+        "verdict": "unknown"
+      }
+    },
+    {
+      "name": "identity-gated-award-excludes-non-matching-declared-profile",
+      "grounded": "94 UW awards carry the 'Women' affiliation tag.",
+      "profile": "jordan",
+      "award": {
+        "eligibility": {
+          "identity": {
+            "value": [
+              "women"
+            ],
+            "confidence": 0.99,
+            "src": "Open to students who identify as women."
+          }
+        }
+      },
+      "expect": {
+        "verdict": "excluded",
+        "excluded_fields": [
+          "identity"
+        ]
+      },
+      "why": "94 UW awards carry the 'Women' affiliation tag. A profile that affirmatively declares no identity applies can be excluded; one that simply never answered cannot."
+    },
+    {
+      "name": "gpa-floor-above-profile-excludes",
+      "profile": "jordan",
+      "award": {
+        "eligibility": {
+          "gpa_min": {
+            "value": 80,
+            "confidence": 0.9,
+            "src": "minimum 80% cumulative average"
+          }
+        }
+      },
+      "expect": {
+        "verdict": "excluded",
+        "excluded_fields": [
+          "gpa_min"
+        ]
+      },
+      "why": "28.3% of awards state a grade floor, the most common hard numeric gate in the corpus."
+    },
+    {
+      "name": "gpa-floor-below-profile-passes",
+      "profile": "jordan",
+      "award": {
+        "eligibility": {
+          "gpa_min": {
+            "value": 75,
+            "confidence": 0.9,
+            "src": "minimum 75% cumulative average"
+          }
+        }
+      },
+      "expect": {
+        "verdict": "eligible"
+      },
+      "why": "The other side of the grade gate: clearing the floor must not be downgraded to 'needs checking'."
+    },
+    {
+      "name": "any-eligible-canadian-institution-matches-uw",
+      "grounded": "Alexander Rutherford Scholarship — usable at any eligible post-secondary school.",
+      "why": "The highest-value award for this persona. An institution wildcard must satisfy a specific institution.",
+      "profile": "jordan",
+      "award": {
+        "eligibility": {
+          "institution": {
+            "value": [
+              "any_eligible_canadian"
+            ],
+            "confidence": 0.95,
+            "src": "you can attend a post-secondary school anywhere in the world as long as it is an eligible post-secondary school"
+          },
+          "residency": {
+            "value": [
+              "AB"
+            ],
+            "confidence": 0.98,
+            "src": "12 months Alberta residency"
+          },
+          "citizenship": {
+            "value": [
+              "citizen",
+              "pr",
+              "protected"
+            ],
+            "confidence": 0.98,
+            "src": "Canadian citizen, permanent resident or protected person"
+          }
+        }
+      },
+      "expect": {
+        "verdict": "eligible",
+        "excluded_fields": [],
+        "unknown_fields": []
+      }
+    },
+    {
+      "name": "source-default-institution-excludes-other-school-students",
+      "why": "Every UW award implicitly requires attending UW. That is fine on a UW-only site and wrong the moment a second source exists.",
+      "profile": "jordan",
+      "award": {
+        "_source_defaults": {
+          "institution": {
+            "value": [
+              "university-of-alberta"
+            ],
+            "confidence": 1.0,
+            "src": "Implicit: University of Alberta's own awards directory."
+          }
+        },
+        "eligibility": {
+          "level": {
+            "value": [
+              "undergraduate"
+            ],
+            "confidence": 0.99,
+            "src": "Undergraduate students."
+          }
+        }
+      },
+      "expect": {
+        "verdict": "excluded",
+        "excluded_fields": [
+          "institution"
+        ]
+      }
+    },
+    {
+      "name": "award-field-overrides-source-default",
+      "why": "A source default is a fallback, not a veto. An award that explicitly opens itself to any Canadian school must beat its source's implicit institution.",
+      "profile": "jordan",
+      "award": {
+        "_source_defaults": {
+          "institution": {
+            "value": [
+              "university-of-alberta"
+            ],
+            "confidence": 1.0,
+            "src": "Implicit: source default."
+          }
+        },
+        "eligibility": {
+          "institution": {
+            "value": [
+              "any_canadian"
+            ],
+            "confidence": 0.95,
+            "src": "Tenable at any Canadian post-secondary institution."
+          }
+        }
+      },
+      "expect": {
+        "verdict": "eligible"
+      }
+    },
+    {
+      "name": "nomination-only-is-eligible-but-flagged",
+      "grounded": "Engineers Canada, IEEE Canadian Foundation, Engineers Foundation Ontario.",
+      "why": "These fit a strong candidate perfectly and cannot be applied to directly. A plain 'eligible' would waste real effort.",
+      "profile": "jordan",
+      "award": {
+        "application_type": "nomination",
+        "eligibility": {
+          "level": {
+            "value": [
+              "undergraduate"
+            ],
+            "confidence": 0.99,
+            "src": "Undergraduate engineering students."
+          }
+        }
+      },
+      "expect": {
+        "verdict": "eligible",
+        "reason_contains": "Not an open application"
+      }
+    },
+    {
+      "name": "worst-field-wins",
+      "why": "One excluded field must sink an award even when every other field passes.",
+      "profile": "jordan",
+      "award": {
+        "eligibility": {
+          "level": {
+            "value": [
+              "undergraduate"
+            ],
+            "confidence": 0.99,
+            "src": "Undergraduates."
+          },
+          "citizenship": {
+            "value": [
+              "citizen"
+            ],
+            "confidence": 0.99,
+            "src": "Canadian citizens."
+          },
+          "residency": {
+            "value": [
+              "ON"
+            ],
+            "confidence": 0.95,
+            "src": "Ontario residents only."
+          }
+        }
+      },
+      "expect": {
+        "verdict": "excluded",
+        "excluded_fields": [
+          "residency"
+        ]
+      }
+    },
+    {
+      "name": "unknown-outranks-eligible-but-not-excluded",
+      "why": "Ordering of the three states: one unknown field downgrades an otherwise-eligible award, and one excluded field beats an unknown.",
+      "profile": "sparse",
+      "award": {
+        "eligibility": {
+          "institution": {
+            "value": [
+              "university-of-waterloo"
+            ],
+            "confidence": 0.99,
+            "src": "UW students."
+          },
+          "gpa_min": {
+            "value": 80,
+            "confidence": 0.9,
+            "src": "minimum 80%"
+          }
+        }
+      },
+      "expect": {
+        "verdict": "unknown",
+        "unknown_fields": [
+          "gpa_min"
+        ],
+        "excluded_fields": []
+      }
+    },
+    {
+      "name": "financial-need-requirement-excludes-student-without-need",
+      "profile": "jordan",
+      "award": {
+        "eligibility": {
+          "financial_need": {
+            "value": true,
+            "confidence": 0.95,
+            "src": "Demonstrated financial need is required."
+          }
+        }
+      },
+      "expect": {
+        "verdict": "excluded",
+        "excluded_fields": [
+          "financial_need"
+        ]
+      },
+      "why": "15.4% of awards require demonstrated need; a student without it genuinely cannot win them."
+    },
+    {
+      "name": "year-requirement-matches-third-year",
+      "profile": "jordan",
+      "award": {
+        "eligibility": {
+          "year": {
+            "value": [
+              2,
+              3,
+              4
+            ],
+            "confidence": 0.9,
+            "src": "Open to students in years two through four."
+          }
+        }
+      },
+      "expect": {
+        "verdict": "eligible"
+      },
+      "why": "11.2% of awards gate on year of study; the persona is in year 3."
+    },
+    {
+      "name": "year-requirement-excludes-third-year",
+      "profile": "jordan",
+      "award": {
+        "eligibility": {
+          "year": {
+            "value": [
+              1
+            ],
+            "confidence": 0.9,
+            "src": "Entering first-year students only."
+          }
+        }
+      },
+      "expect": {
+        "verdict": "excluded",
+        "excluded_fields": [
+          "year"
+        ]
+      },
+      "why": "Entrance awards are the biggest source of false positives for a mid-degree student."
+    },
+    {
+      "name": "empty-identity-list-is-unanswered-not-a-declaration",
+      "why": "The dangerous failure mode: if [] were read as 'none apply', any profile builder that initialises list fields to [] would silently exclude the student from every identity-gated award. Only the explicit \"none\" sentinel may exclude.",
+      "profile": "empty_lists",
+      "award": {
+        "eligibility": {
+          "identity": {
+            "value": [
+              "women"
+            ],
+            "confidence": 0.99,
+            "src": "Open to students who identify as women."
+          }
+        }
+      },
+      "expect": {
+        "verdict": "unknown",
+        "unknown_fields": [
+          "identity"
+        ],
+        "excluded_fields": []
+      }
+    },
+    {
+      "name": "faculty-wide-award-matches-specific-program",
+      "why": "The #1 documented trap in this repo: awards tagged at faculty level must match a student in a specific plan within that faculty. Filtering literally gives 161 awards instead of 443 for a Software Engineering student. Discovered when matching the golden set excluded 94 of 120 awards on program alone.",
+      "profile": "jordan",
+      "award": {
+        "eligibility": {
+          "program": {
+            "value": [
+              "engineering"
+            ],
+            "confidence": 0.9,
+            "src": "any program in the Faculty of Engineering"
+          }
+        }
+      },
+      "expect": {
+        "verdict": "eligible"
+      }
+    },
+    {
+      "name": "faculty-wide-award-still-honours-its-exclusions",
+      "why": "Faculty-wide matching must not override an explicit program exclusion.",
+      "profile": "ontario_se",
+      "award": {
+        "eligibility": {
+          "program": {
+            "value": [
+              "engineering"
+            ],
+            "confidence": 0.9,
+            "src": "any program in the Faculty of Engineering"
+          },
+          "program_excluded": {
+            "value": [
+              "software-engineering"
+            ],
+            "confidence": 0.95,
+            "src": "(excluding Architecture and Software Engineering)"
+          }
+        }
+      },
+      "expect": {
+        "verdict": "excluded",
+        "excluded_fields": [
+          "program_excluded"
+        ]
+      }
+    }
+  ]
+}

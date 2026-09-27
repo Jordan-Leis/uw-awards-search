@@ -1,0 +1,38 @@
+# University of Saskatchewan Awards — Blackbaud Award Management ("AcademicWorks") tenant.
+#
+# Shares adapters/academicworks.py with the other four Canadian tenants; this
+# file is the entire cost of adding it. Relevance to an out-of-province student
+# is low (almost everything requires enrolment here), so this is breadth for
+# the eventual national database rather than for the first-pass persona.
+
+id: usask
+name: University of Saskatchewan Awards
+short_name: USask
+status: planned  # registered and ready; not yet crawled
+
+adapter: academicworks
+academicworks_host: usask.academicworks.ca
+url: https://usask.academicworks.ca/opportunities
+source_url: https://usask.academicworks.ca/opportunities
+
+robots:
+  checked: 2026-09-27
+  allowed: true
+  note: >-
+    "User-Agent: * / Disallow:" — allow-all. Re-verified per host at fetch time
+    by adapters/http.PoliteFetcher.
+
+refresh: triannual
+
+min_awards: 20
+min_scraped_fraction: 0.5
+
+defaults:
+  institution:
+    value: [university-of-saskatchewan]
+    confidence: 0.95
+    src: "Implicit: University of Saskatchewan Awards own award listing."
+
+disclaimer: >-
+  Unofficial mirror of the University of Saskatchewan Awards listings. Not affiliated with or endorsed by
+  the institution.

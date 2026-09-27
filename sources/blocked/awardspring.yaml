@@ -1,0 +1,50 @@
+# EXCLUDED ON POLICY, NOT CAPABILITY.
+#
+# AwardSpring is technically the cleanest target found during source research:
+# a paginated public JSON API, no authentication, returning
+# {totalCount, totalPages} plus per-award id, name, applicationEndDate,
+# amountPerAwardRaw, htmlStrippedDescription and scholarshipCategory:
+#
+#     GET /AS/public/scholarships?page=N&pageSize=100
+#
+# Every tenant nonetheless serves:
+#
+#     User-agent: *
+#     Disallow: /
+#
+# Verified 2026-09-26 against mcmaster.awardspring.ca. The project respects
+# robots.txt strictly, so this costs roughly 2,100 awards. Recorded here so
+# the tradeoff stays visible and revisitable rather than looking like an
+# oversight. Students are pointed at these portals to search by hand.
+
+id: awardspring
+name: AwardSpring (McMaster, Toronto Metropolitan, UCalgary)
+short_name: AwardSpring
+status: blocked
+
+url: https://mcmaster.awardspring.ca/AS/public/scholarships
+source_url: https://mcmaster.awardspring.ca/
+manual_check_url: https://mcmaster.awardspring.ca/AS/public/scholarships
+
+blocked_reason: >-
+  robots.txt returns "User-agent: * / Disallow: /" on every AwardSpring tenant
+  (verified 2026-09-26). The data is public and unauthenticated and the JSON
+  API is trivially parsable, but site-wide robots exclusion is respected.
+
+robots:
+  checked: 2026-09-26
+  allowed: false
+  note: 'Disallow: / — site-wide, all tenants'
+
+# Kept so a future revisit does not have to redo the discovery work.
+notes:
+  estimated_awards: 2107
+  tenants:
+    - { host: mcmaster.awardspring.ca, awards: 643 }
+    - { host: torontomu.awardspring.ca, awards: 1445 }
+    - { host: ucalgary.awardspring.ca, awards: 19, note: "currently-open only; Alberta-relevant" }
+  api: "GET /AS/public/scholarships?page=N&pageSize=100 (JSON)"
+  alternative: >-
+    UCalgary also publishes server-rendered per-award Drupal nodes at
+    ucalgary.ca/registrar/awards/<slug>, which are not robots-excluded and
+    cover far more than the 19 currently-open AwardSpring listings.

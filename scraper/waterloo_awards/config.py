@@ -71,5 +71,10 @@ CAREER_LEVEL_PAIRS = [
 # reading at or above this needs to be split further.
 ROW_CAP = 300
 
+# Registry id for this scraper's source (see sources/uw.yaml). Awards are keyed
+# on (source_id, native_id), so this is half of every primary key this scraper
+# writes.
+SOURCE_ID = "uw"
+
 DB_PATH = "awards.db"
 CSV_PATH = "awards.csv"

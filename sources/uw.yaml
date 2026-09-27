@@ -1,0 +1,51 @@
+# University of Waterloo Awards Directory — source #1.
+#
+# This is the registry entry for the original (and, at time of writing, only)
+# scraped source. Every field here is read at build time by
+# scraper/waterloo_awards/sources.py and compiled into site/data/sources.json,
+# which is what the frontend and tools/find_awards.py actually read. Nothing
+# downstream parses YAML.
+
+id: uw
+name: University of Waterloo Awards Directory
+short_name: Waterloo
+status: active
+
+adapter: playwright_uw
+url: https://uwaterloo.ca/awards-directory/
+source_url: https://uwaterloo.ca/awards-directory/
+
+robots:
+  checked: 2026-09-26
+  allowed: true
+  note: >-
+    Scraped via the public "Find Awards" search flow. Rate limited to one
+    detail page per 0.3s (see scraper/scrape_details.py RATE_LIMIT_SECONDS).
+
+# Refresh cadence. The scheduled workflow runs Jan/May/Sep 1.
+refresh: triannual
+
+# Publish gate for THIS source. export_data.py fails loudly if the source is
+# active and returns fewer rows than this, so one broken adapter can never
+# quietly halve the corpus. Historical total has been ~1519-1533.
+min_awards: 1400
+min_scraped_fraction: 0.95
+
+# Eligibility facts that are true of every award from this source but are
+# never stated in the award text, because the source takes them as given.
+# The matcher applies these before anything extracted from prose.
+#
+# This one matters: every award in the UW directory requires that you attend
+# UW. That has always been implicit, which is fine for a UW-only site and
+# actively wrong the moment a second source exists.
+defaults:
+  institution:
+    value: [university-of-waterloo]
+    confidence: 1.0
+    src: "Implicit: this is the University of Waterloo's own awards directory."
+
+disclaimer: >-
+  Unofficial mirror of the University of Waterloo Awards Directory. Not
+  affiliated with or endorsed by the University of Waterloo, and not an
+  official API. Verify anything time-sensitive against
+  https://uwaterloo.ca/awards-directory/.
