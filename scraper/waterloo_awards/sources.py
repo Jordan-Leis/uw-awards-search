@@ -16,8 +16,6 @@ research.
 """
 from pathlib import Path
 
-import yaml
-
 SOURCES_DIR = Path(__file__).parent.parent.parent / "sources"
 
 VALID_STATUSES = {"active", "blocked", "planned"}
@@ -87,6 +85,12 @@ def load_all(sources_dir=SOURCES_DIR):
     """Every registry entry, keyed by id, in filename order."""
     if not sources_dir.is_dir():
         raise SourceRegistryError(f"No source registry directory at {sources_dir}")
+
+    # Imported here, not at module scope, so the pure helpers in this package
+    # and in export_data stay importable without PyYAML. tests/ is stdlib-only
+    # by design and installs nothing, and a top-level import meant that merely
+    # importing export_data for split_multi_value failed the whole test job.
+    import yaml
 
     registry = {}
     for path in sorted(sources_dir.rglob("*.yaml")):
