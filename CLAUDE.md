@@ -70,6 +70,42 @@ undergraduate awards, many sources". Schema v2 landed; adapters have not.
   `site/data/sources.json`, which is what the frontend and `find_awards.py`
   read. Do not add a YAML parser to `tools/` or `site/js/` — they are
   deliberately dependency-free.
+- **`awards.json` is NOT the whole corpus any more.** A source declares
+  `delivery: core` (ships in `awards.json`, fetched on every page load) or
+  `delivery: shard` (ships in `data/sources/<id>.json`, fetched only when a
+  visitor asks). The default is `shard`, so a source that forgets the field
+  stays out of the always-loaded payload — the failure mode of forgetting is a
+  source nobody sees until they ask, not a 25 MB first paint. `awards.json`
+  costs ~2.4 KB/award and the AcademicWorks estate is ~10,000 awards, so this
+  is not premature: the whole estate in one blob is >25 MB, committed to this
+  repo *and* mirrored into `Personal_Website` on every refresh.
+  `awards.slim.json` stays complete, and `tools/find_awards.py` merges every
+  shard (`--core-only` reproduces what the browser loads first).
+- **`application_status` hides closed awards without excluding on silence.**
+  2,164 of UofA's 2,428 awards are `Ended`. The facet is a plain scalar
+  `facet`, so selecting `Open` still keeps every award that states *no* status
+  — which is most of the corpus, because only UofA and a few colleges publish
+  one. The UI pre-selects `Open` via the facet's `default`; that is a UI
+  default and not matcher semantics, and turning it into a gate would hide
+  Manitoba's entire 3,145-award catalogue. Guarded on both sides by
+  `tests/test_filters.py` and `tests/test_search_js.js`.
+- **The adapter skips detail pages for closed awards.** A detail page is one
+  request, and most awards in the estate are closed, so this is what makes a
+  full UofA crawl ~264 requests instead of ~2,400. Unknown status is always
+  crawled, and a reopened award gets its full text at the next refresh.
+  `--detail-all` overrides it.
+- **DNS cannot discover AcademicWorks tenants.** *Both* TLDs answer for every
+  subdomain — a sweep of 100 `*.academicworks.ca` slugs resolved all 100,
+  including a nonsense control. Use `tools/probe_academicworks.py`: a real
+  tenant keeps its own host, anything else redirects to `www.blackbaud.com`.
+  The probe keeps a nonsense slug in its default list so the discriminator is
+  self-testing, and it found six tenants (four in Alberta, ~2,592 awards) that
+  hand research had missed.
+- **`amount_raw` is the amount string, not the text it was found in.** Both
+  `parse_amounts()` and `export_data.derive_amounts()` used to store their
+  whole input, so one UofA award carried 3,407 characters of description in
+  `amount_raw`. Short input is kept verbatim (`"up to"` and `"per year"` change
+  what a number means); longer input contributes only the figures it matched.
 - **Adding a facet to `index.json` is safe**; `tools/gen_vocab.py` iterates its
   own `FACET_TO_FILTER_KEY` and ignores the rest. The new `source_id` facet did
   not change `VOCAB_VERSION`, so it needs no Worker redeploy.
@@ -91,6 +127,34 @@ undergraduate awards, many sources". Schema v2 landed; adapters have not.
   bs4 + lxml + Playwright exist for UW because PeopleSoft will not render
   without a browser; none of that applies to a plain HTML table, and
   stdlib-only adapters can be tested anywhere.
+- **Map into the existing facet vocabulary; never coin a synonym.** The EFC
+  adapter first set `award_type: "Scholarship"`, which competes with the
+  `Awards/Scholarships/Prizes` value UW uses for 1,153 awards — a student
+  picking either would silently miss the other. Same class of split as the
+  AcademicWorks faculty-name pairs. Check `site/data/index.json` `core_facets`
+  before introducing a value. Adding one is fine when it is genuinely distinct:
+  EFC's `People of colour` stands because the nearest existing value, `Black`,
+  is narrower than what the source says.
+- **Do not tag a facet the source does not state.** Western's 2,021 awards keep
+  `career` NULL. The page declares no scope ("WESTERN AWARDS"), so tagging them
+  all `Undergraduate` invents a fact — and inferring from prose is worse: 245
+  descriptions contain a graduate-level word but nearly all are donor biography
+  ("a Western graduate in the Faculty of Law", "PhD'74") or an undergraduate
+  award funding *future* graduate study. Only 2 are actually graduate, so
+  inference would hide ~20 awards from the students they are for. Unstated is
+  unconstrained, so NULL still shows up for an undergraduate search.
+- **A source with no id needs a content-derived one, not a positional one.**
+  Western's page has no row key, no per-award link and no query parameter, and
+  20 of its names are duplicated. `native_id` is `slugify(name)` with ties
+  broken on the **description**, never on row order: the page is regenerated,
+  and ordering by position would repoint every permalink after a moved row at a
+  different award. `tests/test_adapters.py` reverses the input and asserts the
+  ids do not move.
+- **One GET can be the whole source.** Western returns all 2,021 awards with
+  full descriptions inline — median 815 characters, none empty — so it has no
+  detail pass at all. Check for this before writing a per-award crawl: SFU
+  (866 rows from an empty POST) and ScholarAB (1,542 from one static page) have
+  the same shape.
 - **Never assume a URL path prefix.** Alberta's Alexander Rutherford award —
   the most valuable one in that source — sits under `/scholarships-and-awards/`
   while everything else is under `/scholarships/`.
@@ -155,11 +219,23 @@ or commit it.** `tools/profile.example.json` is the safe, committed template.
   into filter values via Gemini's free tier. `ai-search/README.md` has the
   deploy runbook and the abuse model.
 
-Do not make `site/js/*` fetch anything beyond `data/awards.json`,
-`data/meta.json`, and the AI Worker's `/interpret` endpoint (which is
-optional — `app.js` guards on it and the page must work identically without
-it). The other files under `site/data/` are for external consumers, and a
-missing one would blank the page for every visitor.
+`site/js/*` may fetch exactly five things: **`data/awards.json`** and
+**`data/meta.json`** (required — the page cannot render without them),
+**`data/filters.json`**, **`data/sources.json`** and
+**`data/sources/<id>.json`** (all optional), plus the AI Worker's
+`/interpret` endpoint (also optional). Every optional fetch must be
+individually `try`-guarded and must degrade to something usable, never to a
+blank page:
+
+| Missing | Result |
+|---|---|
+| `filters.json` | falls back to `FALLBACK_FILTER_SPEC`, six built-in filters |
+| `sources.json` | no "More sources" row; core corpus fully searchable |
+| a source shard | that one chip shows as failed; everything else keeps working |
+
+Do not add a sixth. Anything else under `site/data/` is for external
+consumers, and making the page depend on it would blank the site for every
+visitor if it ever went missing.
 
 ## AI search — things that are easy to get wrong
 

@@ -10,6 +10,7 @@ source goes through here.
 """
 import argparse
 import importlib
+import inspect
 import logging
 import sys
 from pathlib import Path
@@ -41,6 +42,10 @@ def main():
     ap.add_argument("--no-detail", action="store_true",
                     help="index only, skip per-award detail pages (fast, but descriptions "
                          "stay truncated and eligibility extraction will be poor)")
+    ap.add_argument("--detail-all", action="store_true",
+                    help="also fetch detail for awards whose application window has "
+                         "closed. Skipped by default because they are hidden in the UI "
+                         "and are most of the corpus — 2,164 of UofA's 2,428.")
     ap.add_argument("--rate-limit", type=float, default=1.0, help="seconds between requests")
     ap.add_argument("--db", default=None, help="override the database path")
     args = ap.parse_args()
@@ -69,8 +74,16 @@ def main():
         )
 
     fetcher = PoliteFetcher(rate_limit=args.rate_limit)
-    adapter = adapter_cls(fetcher, entry=entry, limit=args.limit,
-                          fetch_detail=not args.no_detail)
+    kwargs = dict(entry=entry, limit=args.limit, fetch_detail=not args.no_detail)
+    # Only adapters that understand closed awards take this. Checked against the
+    # signature rather than hardcoding which adapter supports it, so a new
+    # adapter opting in needs no edit here.
+    if "detail_all" in inspect.signature(adapter_cls).parameters:
+        kwargs["detail_all"] = args.detail_all
+    elif args.detail_all:
+        log.warning("[%s] adapter %s has no notion of closed awards; "
+                    "--detail-all has no effect", args.source_id, entry["adapter"])
+    adapter = adapter_cls(fetcher, **kwargs)
 
     conn = None
     if not args.dry_run:

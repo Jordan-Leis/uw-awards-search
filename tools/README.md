@@ -39,6 +39,17 @@ Without a profile the tool still runs on CLI filters alone.
 | `--detail ID...` | full record for specific awards |
 | `--facets` `--stats` `--explain` | vocabularies / filter funnel / matched terms |
 | `--data PATH` `--url BASE` | read a different dataset or a published `/data` URL |
+| `--core-only` | search only `awards.json`, i.e. exactly what the website loads on first paint. By default every per-source shard is merged in too |
+
+### Sharded sources
+
+`site/data/awards.json` holds only the *core* sources. Awards restricted to one
+institution's own students live in `site/data/sources/<source_id>.json`, because
+the browser fetches `awards.json` on every page load and the whole corpus would
+be tens of megabytes. This tool has no such constraint and merges every shard by
+default — a partial corpus here would answer "no awards match" about an award
+that exists, which is the failure this project is built to avoid. A shard it
+cannot read is reported on stderr rather than skipped silently.
 
 ## Faculty-wide expansion (on by default)
 

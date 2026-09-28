@@ -64,21 +64,69 @@ TYPE_ABBR = {
 # Loading
 # --------------------------------------------------------------------------
 
-def load_awards(data_path=None, base_url=None):
-    if base_url:
+def _read_json(path_or_url, timeout=60):
+    if isinstance(path_or_url, str) and path_or_url.startswith(("http://", "https://")):
         import urllib.request
-        url = base_url.rstrip("/") + "/awards.json"
-        with urllib.request.urlopen(url, timeout=60) as r:
+        with urllib.request.urlopen(path_or_url, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
-
-    path = Path(data_path) if data_path else DEFAULT_DATA
-    if not path.is_file():
-        sys.exit(
-            f"error: no dataset at {path}\n"
-            "       Pass --data PATH, or --url https://jordanleis.com/awards-database/data"
-        )
-    with open(path, encoding="utf-8") as f:
+    with open(path_or_url, encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_awards(data_path=None, base_url=None, core_only=False):
+    """The full corpus: awards.json plus every per-source shard.
+
+    awards.json holds only the core sources, because the browser fetches it on
+    every page load. The CLI has no such constraint and a partial corpus here
+    would be actively misleading -- "no awards match" when the award exists in a
+    shard is the false-negative this whole project is against. So the shards
+    listed in sources.json are merged in, and a shard that cannot be read is
+    reported loudly rather than skipped silently.
+    """
+    if base_url:
+        base = base_url.rstrip("/")
+        awards = _read_json(base + "/awards.json")
+        sources_at = base + "/sources.json"
+    else:
+        path = Path(data_path) if data_path else DEFAULT_DATA
+        if not path.is_file():
+            sys.exit(
+                f"error: no dataset at {path}\n"
+                "       Pass --data PATH, or --url https://jordanleis.com/awards-database/data"
+            )
+        awards = _read_json(path)
+        sources_at = path.parent / "sources.json"
+
+    if core_only:
+        return awards
+
+    try:
+        sources = _read_json(sources_at)
+    except Exception:
+        # Pre-shard datasets have no sources.json. awards.json was the whole
+        # corpus then, so this is correct rather than merely tolerable.
+        return awards
+
+    known = {a.get("award_uid") for a in awards}
+    for source_id, entry in sorted(sources.items()):
+        shard = entry.get("shard_path")
+        if not shard or entry.get("status") != "active":
+            continue
+        location = (base_url.rstrip("/") + "/" + shard) if base_url \
+            else (Path(sources_at).parent / shard)
+        try:
+            extra = _read_json(location)
+        except Exception as e:
+            print(f"warning: could not read shard for {source_id} at {location}: {e}",
+                  file=sys.stderr)
+            continue
+        for record in extra:
+            if record.get("award_uid") not in known:
+                known.add(record.get("award_uid"))
+                awards.append(record)
+
+    awards.sort(key=lambda a: ((a.get("award_name") or "").lower(), a.get("award_uid") or ""))
+    return awards
 
 
 def load_profile(path, required=False, quiet=False):
@@ -184,7 +232,27 @@ _FILTER_KEY_BY_ARG = {
     "type": "awardType",
     "areas": "areaOfStudy",
     "affiliation": "affiliation",
+    "application_status": "applicationStatus",
 }
+
+
+def default_application_status(include_closed=False):
+    """What the CLI filters application_status to when nothing is asked for.
+
+    The website pre-selects "Open" because 2,164 of UofA's 2,428 awards are
+    closed for this cycle, and this tool answers the same question ("what can
+    this student win?"), so it has to make the same choice. Leaving it out is
+    how the site and the CLI drift apart -- exactly what CLAUDE.md warns about
+    for affiliation, which disagreed across the two for 94 awards.
+
+    Selecting "Open" does NOT hide awards that state no status, because the
+    facet is a scalar `facet` and unstated is unconstrained. Most sources
+    publish no status at all, so this narrows the closed archive and nothing
+    else.
+    """
+    if include_closed:
+        return []
+    return list(facets.BY_FILTER_KEY["applicationStatus"].get("default") or [])
 
 
 def passes_filters(award, f):
@@ -411,6 +479,14 @@ def main():
     )
     ap.add_argument("query", nargs="*", help="free-text keywords to rank by")
     ap.add_argument("--data", help="path to awards.json")
+    ap.add_argument("--include-closed", action="store_true",
+                    help="also show awards whose application window has closed. Hidden "
+                         "by default, matching the website: 2,164 of UofA's 2,428 are "
+                         "closed for this cycle. Awards that state no status are always "
+                         "shown either way.")
+    ap.add_argument("--core-only", action="store_true",
+                    help="skip the per-source shards and search only awards.json, "
+                         "i.e. exactly what the website loads on first paint")
     ap.add_argument("--url", help="fetch data from a published /data base URL instead")
     ap.add_argument("--profile", default=str(DEFAULT_PROFILE))
     ap.add_argument("--no-profile", action="store_true")
@@ -439,7 +515,7 @@ def main():
     ap.add_argument("--explain", action="store_true", help="show matched terms per row")
     args = ap.parse_args()
 
-    awards = load_awards(args.data, args.url)
+    awards = load_awards(args.data, args.url, core_only=args.core_only)
     facets = facet_counts(awards)
 
     if args.facets:
@@ -484,6 +560,7 @@ def main():
         "type": types_f,
         "affiliation": affils,
         "areas": effective_areas(areas_in, faculties, not args.strict_area),
+        "application_status": default_application_status(args.include_closed),
         "min_value": args.min_value,
     }
 

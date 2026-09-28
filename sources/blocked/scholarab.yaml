@@ -1,0 +1,53 @@
+# NOT INGESTED — LICENCE, NOT ROBOTS.
+#
+# ScholarAB is the best-curated Alberta source found: 1,542 scholarships served
+# in a single 3.5 MB static page, each with a human-written one-line eligibility
+# summary ("Alberta students with a connection to agriculture, rodeo, or the
+# Leduc community"), an amount on 1,280 of them, a deadline, and a
+# "Checked <month year>" freshness stamp. Technically a parsability-5,
+# one-request source — easier than anything already ingested.
+#
+# It is excluded for a reason that has nothing to do with robots, which permits
+# everything except /api/. Its terms license the scholarship database under
+# CREATIVE COMMONS ATTRIBUTION-SHAREALIKE 4.0:
+#
+#   "the scholarship and program database is licensed separately under Creative
+#    Commons Attribution-ShareAlike 4.0. You may reuse it, including
+#    commercially, if you credit ScholarAB with a link and release your version
+#    under the same terms."
+#
+# That is a genuine grant of permission — more than any other source here gives
+# — but ShareAlike is viral. Ingesting their listings would oblige this project
+# to release its own published dataset under CC BY-SA 4.0, including the UW and
+# AcademicWorks records that have nothing to do with ScholarAB. That is a
+# licensing decision about the whole corpus, and the decision taken was not to
+# make it.
+#
+# USED FOR DISCOVERY INSTEAD, which their terms do not restrict and which costs
+# nothing: their outbound links revealed rdpolytech.academicworks.ca, a
+# thirteenth AcademicWorks tenant in Alberta that the tenant probe had missed.
+# Facts like "Red Deer Polytechnic runs an AcademicWorks instance" are not
+# copyrightable, and their own terms say as much: "Individual facts, like a
+# deadline or a dollar amount, belong to nobody."
+#
+# To revisit: either accept CC BY-SA 4.0 for site/data/ and ingest with
+# attribution, or ask ScholarAB for a separate licence. Their listings are
+# written from each provider's own page rather than scraped, so ingesting the
+# same awards from the providers directly is also legitimate — just far more
+# work than one GET.
+
+id: scholarab
+name: ScholarAB (Alberta scholarship directory)
+short_name: ScholarAB
+status: blocked
+
+url: https://scholarab.ca/scholarships
+source_url: https://scholarab.ca/
+manual_check_url: https://scholarab.ca/scholarships
+
+blocked_reason: >-
+  The database is licensed CC BY-SA 4.0. Reuse is expressly permitted with
+  attribution, but ShareAlike would require releasing this project's entire
+  published dataset — including the UW and AcademicWorks records — under the
+  same licence. Excluded on that basis, not on robots, which allows everything
+  but /api/. Used for source discovery only; verified 2026-09-27.

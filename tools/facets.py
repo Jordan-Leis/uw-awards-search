@@ -92,6 +92,21 @@ FACETS = [
         "help": "Which institution or organisation published the award.",
     },
     {
+        "key": "application_status", "filter_key": "applicationStatus",
+        "label": "Application status", "kind": "scalar", "semantics": "facet",
+        "group": "Award",
+        # Selecting "Open" still keeps awards whose status is unstated, because
+        # a scalar "facet" treats no value as unconstrained -- which is the
+        # whole point here. Only UofA and a few colleges publish a status at
+        # all; every other AcademicWorks tenant returns nothing, so reading
+        # silence as closed would hide Manitoba's entire 3,145-award catalogue.
+        "default": ["Open"],
+        "help": "Awards whose application window has closed are hidden by "
+                "default. Many are annual and will reopen, so they are kept "
+                "and can be shown — sources that publish no status at all "
+                "are always shown.",
+    },
+    {
         "key": "application_type", "filter_key": "applicationType",
         "label": "How you apply", "kind": "scalar", "semantics": "facet",
         "group": "Award",

@@ -1,0 +1,59 @@
+# NOT INGESTED — PENDING WRITTEN PERMISSION.
+#
+# UofT's Award Explorer holds ~4,490 awards with the richest eligibility
+# metadata found anywhere in this research, including a structured Citizenship
+# column that no other source publishes. It is recorded here rather than under
+# sources/ because two things stand in the way, one of policy and one of
+# capability.
+#
+# POLICY — the two hostnames disagree
+#   award-explorer.utoronto.ca       robots.txt DISALLOWS crawling
+#   uoftscholarships.smartsimple.com robots.txt returns 404 (no file at all)
+#
+# Both serve the same report. The tempting reading is that the vendor host is
+# permitted because it publishes no rules, but an absent robots.txt on a
+# third-party SaaS host means SmartSimple never wrote one — it is not UofT
+# granting permission, and UofT's OWN hostname for this exact tool publishes a
+# Disallow. Reaching the data through the vendor is routing around that, and
+# robots.txt is a crawl directive regardless of whether anything is sold.
+#
+# This repo already excluded AwardSpring (~2,100 awards, a cleaner API than this
+# one) on precisely this basis. Scraping UofT would make that the only
+# inconsistent call in the registry.
+#
+# Second-hand faculty say-so does not resolve it either: faculty permission for
+# somebody else's project is not permission for this one, and faculty do not set
+# that host's crawl policy. One email to UofT Student Accounts asking for
+# permission or a data feed would settle it. With a written yes, move this file
+# to sources/ as `status: planned`, quote the permission in this comment, and
+# record who granted it and when.
+#
+# CAPABILITY — it also does not work yet
+# The public entry point is a token URL published on
+# future.utoronto.ca/finances/awards/ :
+#
+#     /ex/ex_viewreport.jsp?key=&token=@HwoGSxocZERdRRtfQRxZQ11SZV1zH3pgEw~~
+#
+# That page is only a shell. The data comes from a POST to /ex/ex_openreport.jsp
+# carrying a report id (46862) and the token in hidden inputs. A POST with the
+# form's visible fields returns 0 bytes, so this needs real reverse-engineering
+# of an opaque vendor session form — the most fragile thing in the whole report,
+# and not worth building before permission exists.
+
+id: uoft
+name: University of Toronto Award Explorer
+short_name: UofT
+status: blocked
+
+url: https://uoftscholarships.smartsimple.com/ex/ex_openreport.jsp
+source_url: https://award-explorer.utoronto.ca/
+manual_check_url: https://future.utoronto.ca/finances/awards/
+
+blocked_reason: >-
+  award-explorer.utoronto.ca/robots.txt disallows crawling the Award Explorer.
+  The same report is reachable on the vendor host
+  uoftscholarships.smartsimple.com, whose robots.txt 404s, but an absent file on
+  a third-party SaaS host is not permission from UofT — and this project
+  respects robots.txt strictly (see sources/blocked/awardspring.yaml, excluded
+  the same way at a cost of ~2,100 awards). Costs ~4,490 awards. Resolvable by
+  asking UofT Student Accounts in writing; verified 2026-09-27.

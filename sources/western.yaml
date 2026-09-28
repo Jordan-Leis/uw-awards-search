@@ -1,0 +1,55 @@
+# Western University — studentservices.uwo.ca/secure/Awards/awardMain.cfm
+#
+# The cheapest large source in the project. ONE GET returns all 2,021 awards
+# with their full descriptions already inline: median 815 characters, not one of
+# them empty, 1,874 stating a dollar figure. There is no detail page to fetch,
+# no pagination and no API to reverse-engineer, so a complete refresh of this
+# source costs a single HTTP request.
+#
+# Relevance to an out-of-province student is low in the same way UofA's is —
+# nearly everything here requires enrolment at Western — which is why it is
+# `delivery: shard` and loads only when a visitor asks for it. It is carried
+# because the cost is one request and because it proves the single-GET bulk
+# pattern that Western, SFU and ScholarAB all share.
+#
+# Two things the adapter has to handle, both documented in adapters/western.py:
+# the page contains no id of any kind (native_id is derived from the name, and
+# 20 names collide), and its deadlines are "MONTH DD" with no year, so
+# deadline_date stays null rather than inventing a date that would tell a
+# student an award has closed weeks before it reopens.
+
+id: western
+name: Western University Awards
+short_name: Western
+status: active
+
+adapter: western
+url: https://studentservices.uwo.ca/secure/Awards/awardMain.cfm
+source_url: https://studentservices.uwo.ca/secure/Awards/awardMain.cfm
+
+robots:
+  checked: 2026-09-27
+  allowed: true
+  note: >-
+    studentservices.uwo.ca/robots.txt permits this path. Re-verified at fetch
+    time by adapters/http.PoliteFetcher, not taken from this note.
+
+refresh: triannual
+
+# The page is strikingly uniform — exactly 2,021 rows, every one four cells —
+# so a large drop means a layout change, not a quieter year. The adapter also
+# warns when the row count moves at all.
+min_awards: 1800
+min_scraped_fraction: 0.9
+
+defaults:
+  institution:
+    value: [western-university]
+    confidence: 0.95
+    src: >-
+      Implicit: Western University's own award listing. A small number of
+      entries are externally tenable, so this is 0.95 rather than 1.0.
+
+disclaimer: >-
+  Unofficial mirror of the Western University award listings. Not affiliated
+  with or endorsed by Western University.

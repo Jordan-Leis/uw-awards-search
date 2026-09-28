@@ -22,6 +22,21 @@ SOURCES_DIR = Path(__file__).parent.parent.parent / "sources"
 
 VALID_STATUSES = {"active", "blocked", "planned"}
 
+#: How a source's awards reach the browser.
+#:   core   in data/awards.json, fetched on every page load
+#:   shard  in data/sources/<id>.json, fetched only when the visitor asks
+#: Sharding exists because awards.json costs ~2.4 KB per award and the whole
+#: file is fetched on load: the AcademicWorks estate alone would take it past
+#: 25 MB. It is also the semantically right split -- an award restricted to one
+#: institution's students is only relevant to them, so relevance gating and
+#: load gating are the same gate.
+VALID_DELIVERY = {"core", "shard"}
+
+#: Deliberately "shard". A source that forgets to declare this stays out of the
+#: always-loaded payload, so the failure mode of forgetting is a source nobody
+#: sees until they ask for it -- not a 25 MB first paint for every visitor.
+DEFAULT_DELIVERY = "shard"
+
 # Fields every entry must carry, whatever its status.
 REQUIRED_FIELDS = ("id", "name", "status")
 
@@ -41,6 +56,13 @@ def _validate(entry, path):
         raise SourceRegistryError(
             f"{path.name}: status '{status}' is not one of {sorted(VALID_STATUSES)}"
         )
+
+    delivery = entry.get("delivery", DEFAULT_DELIVERY)
+    if delivery not in VALID_DELIVERY:
+        raise SourceRegistryError(
+            f"{path.name}: delivery '{delivery}' is not one of {sorted(VALID_DELIVERY)}"
+        )
+    entry["delivery"] = delivery
 
     if status == "blocked" and not entry.get("blocked_reason"):
         raise SourceRegistryError(
@@ -120,6 +142,7 @@ def to_public_json(registry):
             "short_name": entry.get("short_name", entry["name"]),
             "status": entry["status"],
             "source_url": entry.get("source_url") or entry.get("url"),
+            "delivery": entry["delivery"],
         }
         if entry["status"] == "blocked":
             public["blocked_reason"] = entry["blocked_reason"]
@@ -130,3 +153,9 @@ def to_public_json(registry):
             public["disclaimer"] = entry["disclaimer"]
         out[source_id] = public
     return out
+
+
+def core_ids(registry):
+    """Active sources whose awards ship in awards.json."""
+    return {sid for sid, e in registry.items()
+            if e["status"] == "active" and e["delivery"] == "core"}

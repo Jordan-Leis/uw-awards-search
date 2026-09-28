@@ -1,0 +1,63 @@
+# Electro-Federation Canada — electrofed.com
+#
+# The best-fitting source in the project for an electrical engineering
+# undergraduate, and the only one so far whose awards are mostly portable. 46
+# scholarships from the electrical industry's own trade association — ABB,
+# Schneider, Hubbell, Eaton, Southwire, Nexans, Bruce Power and others — all
+# applied for through a single EFC application centre, so none are
+# nomination-gated.
+#
+# 46, not 60: the master list holds every one and the themed pages are subsets,
+# so adding the pages up double-counts.
+#
+# `delivery: core`. This is the first source other than UW and Alberta Student
+# Aid to earn that: these awards are open nationally, so they are relevant to
+# every visitor, which is exactly what the always-loaded payload is for. It also
+# costs almost nothing — 46 records against Western's 2,021.
+#
+# The themed pages are free eligibility metadata. Membership of
+# "efc-scholarships-for-women" or "-for-western-canada" is a published fact, not
+# a reading of prose, so the adapter records it with the page URL as its `src`.
+# Identity tags reuse the existing affiliation vocabulary ("Women",
+# "Indigenous"); "People of colour" is new because the nearest existing value,
+# "Black", is narrower than what EFC actually says.
+
+id: electrofed
+name: Electro-Federation Canada Scholarships
+short_name: Electro-Federation
+status: active
+
+delivery: core
+
+adapter: electrofed
+url: https://www.electrofed.com/about/efc-scholarship-program/efc-scholarships-list/
+source_url: https://www.electrofed.com/about/efc-scholarship-program/
+
+robots:
+  checked: 2026-09-27
+  allowed: true
+  note: >-
+    electrofed.com/robots.txt permits the scholarship pages. Re-verified at
+    fetch time by adapters/http.PoliteFetcher.
+
+refresh: triannual
+
+# Small by design. The floor guards against the master list changing shape and
+# silently yielding a handful, which is the realistic failure here.
+min_awards: 35
+min_scraped_fraction: 0.8
+
+defaults:
+  citizenship:
+    value: [citizen, pr]
+    confidence: 0.5
+    src: >-
+      Weak, deliberately below the 0.75 exclusion threshold: EFC scholarships
+      are for students at Canadian institutions and most restate a citizenship
+      or residency requirement, but the association does not state one globally,
+      so this must never exclude anyone on its own.
+
+disclaimer: >-
+  Unofficial mirror of the Electro-Federation Canada scholarship listings. Not
+  affiliated with or endorsed by Electro-Federation Canada. Apply through EFC's
+  own application centre at https://scholarship.electrofed.com/.

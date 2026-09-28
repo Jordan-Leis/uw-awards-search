@@ -57,6 +57,15 @@ jobs:
       # Sources marked `planned` in sources/ are skipped here and by the
       # export's validation gate, so registering a source is separate from
       # turning it on.
+      #
+      # Sequential on purpose. Seven active sources sounds like a case for a
+      # job matrix, but the export needs one database holding every source, so
+      # a matrix would mean uploading a partial awards.db per job and merging
+      # them — real complexity for no current gain. The crawl is ~1,500 requests
+      # at 1 req/s (~25 min), because adapters skip detail pages for awards
+      # whose application window has closed, and that is most of the estate:
+      # 2,164 of UofA's 2,428. Revisit if the adapter budget approaches this
+      # job's 180-minute timeout.
       - name: Run source adapters
         run: |
           for source in $(python - <<'EOF'

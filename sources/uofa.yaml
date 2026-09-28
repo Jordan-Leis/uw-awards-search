@@ -6,19 +6,25 @@
 # handful of listing requests) and because it proves the multi-tenant path that
 # UManitoba, Trent, USask and Concordia reuse verbatim.
 #
-# NOT YET SHIPPED. The listing alone truncates every description with an
-# ellipsis, and truncated text is exactly how eligibility constraints go
-# missing. Turning this on means running run_adapter.py without --no-detail
-# (~2,400 requests, ~40 minutes) and flipping status back to active.
+# 2,164 of its 2,428 awards are marked "Ended". They are kept -- most are annual
+# and will reopen -- but application_status hides them by default, and the
+# adapter does not spend a detail request on a closed award. That is what makes
+# a full crawl of the largest tenant ~264 requests instead of ~2,400: the
+# listing alone truncates descriptions with an ellipsis, which is exactly how
+# eligibility constraints go missing, so every award a student can actually
+# apply to does get its full detail page.
 #
-# Note the TLD: Canadian tenants are on .ca. The .com estate has a wildcard
-# catch-all that redirects any subdomain, so probing it yields false positives,
-# and western.academicworks.com is Western Colorado, not Western Ontario.
+# Canadian tenants are on .ca, but BOTH TLDs have a wildcard DNS catch-all, so
+# a subdomain that resolves is not evidence of a tenant — a sweep of 100 slugs
+# resolved all 100, nonsense included. Confirm over HTTP with
+# tools/probe_academicworks.py: a real tenant keeps its own host, a fake
+# redirects to www.blackbaud.com. Note also that western.academicworks.com is
+# Western Colorado, not Western Ontario.
 
 id: uofa
 name: University of Alberta Awards
 short_name: UAlberta
-status: planned  # adapter proven; awaiting a full detail crawl
+status: active
 
 adapter: academicworks
 academicworks_host: alberta.academicworks.ca

@@ -11,6 +11,13 @@ name: University of Waterloo Awards Directory
 short_name: Waterloo
 status: active
 
+# Ships in data/awards.json, fetched on every page load. This source is either
+# portable (its awards travel with the student) or the site's home institution,
+# so it is relevant to every visitor. Institution-restricted sources are
+# `shard` instead and load only when asked for -- see VALID_DELIVERY in
+# scraper/waterloo_awards/sources.py.
+delivery: core
+
 adapter: playwright_uw
 url: https://uwaterloo.ca/awards-directory/
 source_url: https://uwaterloo.ca/awards-directory/

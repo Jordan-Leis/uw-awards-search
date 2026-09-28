@@ -51,7 +51,14 @@ def main():
         return 1
 
     manifest = json.loads(INDEX_JSON.read_text(encoding="utf-8"))
-    facets = manifest.get("facets") or {}
+    # core_facets, not facets: the Worker must only ever suggest a filter value
+    # the browser actually has records for. Institution-restricted sources are
+    # sharded and not loaded until a visitor asks, so putting their programs in
+    # the vocabulary would let Gemini tick "Faculty of Engineering" for a
+    # visitor holding only the core corpus -- and because UW awards DO state a
+    # program, that filter would exclude all of them and return nothing.
+    # Falls back to the full block for pre-shard index.json files.
+    facets = manifest.get("core_facets") or manifest.get("facets") or {}
 
     vocab = {}
     for facet_name, filter_key in FACET_TO_FILTER_KEY.items():

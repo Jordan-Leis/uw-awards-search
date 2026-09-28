@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS awards (
     amount_raw                     TEXT,
     renewable                      INTEGER,            -- 0/1/NULL
     application_type               TEXT,               -- open | nomination | institution_mediated | member_only
+    application_status             TEXT,               -- Open | Ended | Upcoming | NULL=unknown (most sources say nothing)
     eligibility_json               TEXT,               -- structured eligibility with per-field confidence + source sentence
 
     raw_fields_json                TEXT,               -- full {field_name: text} dict, catch-all for anything
@@ -143,11 +144,44 @@ def migrate_v1_to_v2(conn, default_source_id="uw"):
     return True
 
 
+#: Columns added to SCHEMA after v2 shipped, in the form ALTER TABLE needs.
+#: The migration decision for this project is "additive, UW keeps working at
+#: every commit", and CREATE TABLE IF NOT EXISTS does nothing to a table that
+#: already exists -- so a new nullable column reaches an existing database only
+#: through here. CI always scrapes into a fresh file, but a local working copy
+#: is the normal case for development and it must not need deleting.
+ADDITIVE_COLUMNS = {
+    "application_status": "TEXT",
+}
+
+
+def add_missing_columns(conn, table="awards"):
+    """ALTER in any ADDITIVE_COLUMNS the table does not have yet.
+
+    Returns the list added. Uses table_xinfo, not table_info: the latter omits
+    generated columns, and award_uid is GENERATED ALWAYS AS (...) STORED.
+    """
+    existing = _table_columns(conn, table)
+    if not existing:
+        return []                # no table yet; SCHEMA will create it complete
+    added = []
+    for column, decl in ADDITIVE_COLUMNS.items():
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+            added.append(column)
+    if added:
+        conn.commit()
+    return added
+
+
 def connect(db_path, default_source_id="uw"):
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL;")
     if migrate_v1_to_v2(conn, default_source_id):
         print(f"Migrated {db_path} from schema v1 to v2 (source_id='{default_source_id}')")
+    added = add_missing_columns(conn)
+    if added:
+        print(f"Added column(s) to {db_path}: {', '.join(added)}")
     conn.executescript(SCHEMA)
     return conn
 
@@ -262,7 +296,8 @@ ADAPTER_COLUMNS = [
     "area_of_study", "application_details", "required_supporting_documents",
     "contact_detail", "affiliation",
     "source_url", "deadline_raw", "deadline_date", "amount_min", "amount_max",
-    "amount_raw", "renewable", "application_type",
+    "amount_raw", "renewable", "application_type", "application_status",
+    "eligibility_json",
 ]
 
 

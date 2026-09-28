@@ -47,12 +47,14 @@ const SPEC = {
     { key: "affiliations", filter_key: "affiliation", label: "Group", kind: "list", semantics: "gate", group: "Eligibility" },
     { key: "amount_max", filter_key: "amount", label: "Value", kind: "range", semantics: "facet", group: "Award" },
     { key: "deadline_date", filter_key: "hasDeadline", label: "Deadline", kind: "bool", semantics: "facet", group: "Award" },
+    { key: "application_status", filter_key: "applicationStatus", label: "Status", kind: "scalar", semantics: "facet", group: "Award", default: ["Open"] },
   ],
 };
 
 const award = (over = {}) => Object.assign({
   award_id: "x", award_name: "Test", career: null, levels: [],
   areas_of_study: [], affiliations: [], amount_max: null, deadline_date: null,
+  application_status: null,
 }, over);
 
 let passed = 0, failed = 0;
@@ -156,6 +158,24 @@ if (fs.existsSync(awardsPath)) {
     }
   });
 }
+
+// --- application status: hidden by default, never excluded on silence -----
+// Mirrors tests/test_filters.py::TestApplicationStatusDefault. 2,164 of UofA's
+// 2,428 awards are "Ended", so the UI pre-selects "Open" -- but most sources
+// publish no status at all, and those must survive the default untouched.
+test("status default keeps awards that state no status", () =>
+  assert.strictEqual(m(award({ application_status: null }), "applicationStatus", ["Open"]), true));
+
+test("status default keeps Open and drops Ended", () => {
+  assert.strictEqual(m(award({ application_status: "Open" }), "applicationStatus", ["Open"]), true);
+  assert.strictEqual(m(award({ application_status: "Ended" }), "applicationStatus", ["Open"]), false);
+});
+
+test("clearing the status filter brings closed awards back", () => {
+  for (const st of [null, "Open", "Ended", "Upcoming"]) {
+    assert.strictEqual(m(award({ application_status: st }), "applicationStatus", []), true);
+  }
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

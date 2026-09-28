@@ -23,7 +23,8 @@ sys.path.insert(0, str(REPO / "tools"))
 import find_awards as F  # noqa: E402
 
 NO_FILTERS = {"career": [], "level": [], "term": [], "type": [],
-              "areas": set(), "affiliation": [], "min_value": None}
+              "areas": set(), "affiliation": [], "application_status": [],
+              "min_value": None}
 
 
 def filters(**overrides):
@@ -33,7 +34,7 @@ def filters(**overrides):
 def award(**fields):
     base = {"award_id": "x", "award_name": "Test Award", "career": None,
             "levels": [], "terms": [], "award_types": [], "affiliations": [],
-            "areas_of_study": []}
+            "areas_of_study": [], "application_status": None}
     return {**base, **fields}
 
 
@@ -190,6 +191,71 @@ class TestBrowseVersusProfileMode(unittest.TestCase):
         """Regression guard for the 201 -> 2 collapse."""
         probe = filters(affiliation=["Women"])
         self.assertTrue(F.passes_filters(award(affiliations=[]), probe))
+
+
+class TestApplicationStatusDefault(unittest.TestCase):
+    """Ended awards are hidden by default without excluding anyone on silence.
+
+    2,164 of UofA's 2,428 awards are "Ended", so shipping them unfiltered puts
+    mostly-expired results in front of a student looking for something to apply
+    to. But only UofA and a few colleges publish a status at all -- measured
+    across the live estate, Manitoba, Trent, Winnipeg and Langara return none --
+    so the default has to hide "Ended" while keeping every unstated award.
+
+    That is exactly what a scalar "facet" already does, which is why this needs
+    a default in the UI rather than new matcher semantics. The test is here to
+    stop anyone "fixing" it into a gate.
+    """
+
+    def setUp(self):
+        import facets
+        self.facets = facets
+        self.facet = facets.BY_FILTER_KEY["applicationStatus"]
+
+    def test_default_is_open(self):
+        self.assertEqual(self.facet.get("default"), ["Open"])
+
+    def test_unstated_status_survives_the_default(self):
+        """The load-bearing case. If this ever fails, several thousand awards
+        from sources that publish no status vanish from the site."""
+        award = {"application_status": None}
+        self.assertTrue(self.facets.matches(award, self.facet, ["Open"]))
+        self.assertTrue(
+            self.facets.matches(award, self.facet, ["Open"], mode=self.facets.PROFILE))
+
+    def test_default_hides_ended_and_keeps_open(self):
+        self.assertTrue(self.facets.matches({"application_status": "Open"}, self.facet, ["Open"]))
+        self.assertFalse(self.facets.matches({"application_status": "Ended"}, self.facet, ["Open"]))
+
+    def test_clearing_the_filter_shows_ended_again(self):
+        """Annual awards reopen, so "Ended" must be reachable, not deleted."""
+        for status in (None, "Open", "Ended", "Upcoming"):
+            self.assertTrue(self.facets.matches({"application_status": status}, self.facet, []))
+
+    def test_it_is_a_facet_not_a_gate(self):
+        self.assertEqual(self.facet["semantics"], "facet")
+
+    def test_the_cli_applies_the_same_default_as_the_website(self):
+        """The site pre-selects "Open"; find_awards has to do the same.
+
+        Both answer "what can this student win?", so a closed award hidden in
+        one and shown in the other is the drift CLAUDE.md warns about -- it
+        already happened once with affiliation, where the site and the CLI
+        disagreed about 94 awards.
+        """
+        self.assertEqual(F.default_application_status(), ["Open"])
+        self.assertEqual(F.default_application_status(include_closed=True), [])
+
+    def test_the_cli_default_hides_ended_but_not_unstated(self):
+        probe = filters(application_status=F.default_application_status())
+        self.assertTrue(F.passes_filters(award(application_status=None), probe))
+        self.assertTrue(F.passes_filters(award(application_status="Open"), probe))
+        self.assertFalse(F.passes_filters(award(application_status="Ended"), probe))
+
+    def test_include_closed_shows_everything(self):
+        probe = filters(application_status=F.default_application_status(include_closed=True))
+        for status in (None, "Open", "Ended", "Upcoming"):
+            self.assertTrue(F.passes_filters(award(application_status=status), probe))
 
 
 class TestRealCorpusIsNotShrunk(unittest.TestCase):

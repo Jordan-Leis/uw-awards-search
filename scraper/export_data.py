@@ -47,6 +47,33 @@ _MONEY_RE = re.compile(r"\$\s?([\d,]+(?:\.\d{2})?)")
 _AMOUNT_SOURCE_FIELDS = ("award_value_description", "award_description")
 
 
+#: Mirrors adapters.base.RAW_VERBATIM_LIMIT. Kept as its own constant because
+#: export_data must stay importable without the scraper package on sys.path
+#: (tools/ and CI both import it standalone).
+RAW_VERBATIM_LIMIT = 120
+
+
+def _money_excerpt(text, limit=RAW_VERBATIM_LIMIT):
+    """A short verbatim string naming the dollar figures in `text`.
+
+    Short input IS the amount string and is returned as-is, because "up to" and
+    "per year" change what the number means. Longer input is prose, and only
+    the figures it matched come back.
+    """
+    cleaned = clean_scalar(text)
+    if not cleaned:
+        return None
+    if len(cleaned) <= limit:
+        return cleaned
+    seen, spans = set(), []
+    for match in _MONEY_RE.finditer(cleaned):
+        span = match.group(0).strip()
+        if span not in seen:
+            seen.add(span)
+            spans.append(span)
+    return "; ".join(spans)[:limit] or None
+
+
 def derive_amounts(record):
     """Fill amount_min/amount_max from prose when the adapter did not set them.
 
@@ -72,7 +99,13 @@ def derive_amounts(record):
             record["amount_min"] = min(values)
             record["amount_max"] = max(values)
             if not record.get("amount_raw"):
-                record["amount_raw"] = text
+                # Only the figures, never the whole field. This used to store
+                # `text`, which is why amount_raw averaged 467 characters and
+                # ran to 2,216 across the UW corpus -- a verbatim third copy of
+                # prose already in award_value_description and
+                # award_description. amount_raw is meant to be the amount
+                # string a human would read, not the haystack it came from.
+                record["amount_raw"] = _money_excerpt(text)
             return record
     return record
 
@@ -146,6 +179,7 @@ def build_award_record(row: sqlite3.Row) -> dict:
     record["amount_raw"] = clean_scalar(row["amount_raw"])
     record["renewable"] = None if row["renewable"] is None else bool(row["renewable"])
     record["application_type"] = clean_scalar(row["application_type"])
+    record["application_status"] = clean_scalar(row["application_status"])
     record["eligibility"] = (
         json.loads(row["eligibility_json"]) if row["eligibility_json"] else None
     )
@@ -170,6 +204,9 @@ SLIM_KEY_MAP = {
     "affiliations": "affiliations",
     "areas_of_study": "areas",
     "award_value_description": "value",
+    # Additive. A consumer filtering for awards that are actually open cannot do
+    # it from the slim export otherwise, and most of the corpus is closed.
+    "application_status": "status",
 }
 
 
@@ -186,7 +223,7 @@ def facet_counts(records):
     return facet_spec.count_values(records)
 
 
-def build_manifest(records, meta, registry):
+def build_manifest(records, meta, registry, core_records=None):
     """A small self-describing entry point for anyone consuming this data."""
     disclaimers = [
         entry["disclaimer"].strip()
@@ -207,17 +244,36 @@ def build_manifest(records, meta, registry):
             "polling. " + " ".join(disclaimers)
         ).strip(),
         "endpoints": {
-            "awards": {"path": "awards.json", "description": "all awards, every field"},
+            "awards": {"path": "awards.json",
+                       "description": "awards from the core sources, every field. NOT the "
+                                      "whole corpus: institution-restricted sources are "
+                                      "sharded, see source_shards and awards_slim"},
             "awards_slim": {"path": "awards.slim.json",
-                            "description": "all awards without long prose fields",
+                            "description": "EVERY award, core and sharded, without the long "
+                                           "prose fields — the cheapest complete view",
                             "keys": list(SLIM_KEY_MAP.values())},
+            "source_shards": {
+                "path": "sources/<source_id>.json",
+                "description": "one file per non-core source, same record shape as "
+                               "awards.json. sources.json gives each one's shard_path "
+                               "and award_count; only sources with delivery=shard have one",
+            },
             "meta": {"path": "meta.json", "description": "freshness and counts"},
             "sources": {"path": "sources.json",
                         "description": "source registry, including sources deliberately not ingested"},
             "filters": {"path": "filters.json",
                         "description": "the filter/facet spec the UI builds itself from"},
         },
+        # Every value in the corpus, sharded sources included. External
+        # consumers documented above expect this to describe the whole dataset.
         "facets": facet_counts(records),
+        # Only the values present in awards.json. The AI Worker's vocabulary is
+        # built from THIS block (tools/gen_vocab.py), because the Worker can
+        # only usefully suggest a filter value the browser has data for: a
+        # visitor who has not loaded the UofA shard and gets "Faculty of
+        # Engineering" ticked would see their results collapse to nothing,
+        # since UW awards do state a program and so are excluded by it.
+        "core_facets": facet_counts(core_records if core_records is not None else records),
     }
 
 
@@ -228,6 +284,20 @@ def validate_sources(conn, registry):
     source below its min_awards floor, or an active source whose detail scrape
     is too incomplete. Each of those means the published dataset would be
     quietly worse than the last-known-good one committed in git.
+
+    KNOWN GAP — delisted awards are never removed. upsert_award only inserts or
+    updates, so an award a source stops listing keeps its row and goes on being
+    published; a student could apply to something that no longer exists. One
+    NAIT award was observed disappearing between two crawls this way.
+
+    Detecting it needs a per-RUN marker, not scraped_at: that column is stamped
+    per award, so within a single crawl every row has a different value and
+    "older than this source's newest row" flags almost all of them. The fix is a
+    `last_run_at` column set once per process (ADDITIVE_COLUMNS in db.py already
+    supports adding one) and a prune that runs ONLY after a crawl that completed
+    without errors and met its min_awards floor -- because pruning on absence is
+    otherwise indistinguishable from a transient 503 or a --limit run, and would
+    destroy real awards. That deserves its own change and its own tests.
     """
     rows = conn.execute(
         """
@@ -334,9 +404,41 @@ def main():
         # meta.json from when this was a single-source dataset.
         "source_url": "https://uwaterloo.ca/awards-directory/",
     }
+    # --- delivery split ------------------------------------------------
+    # awards.json is fetched on every page load and costs ~2.4 KB per award, so
+    # it carries only the sources relevant to every visitor. Institution-
+    # restricted sources go to data/sources/<id>.json and are fetched when a
+    # visitor asks for them. Without this the AcademicWorks estate alone takes
+    # awards.json past 25 MB -- committed to this repo AND mirrored into
+    # Personal_Website on every refresh.
+    #
+    # awards.slim.json stays complete: at ~340 bytes a record it is cheap, and
+    # external consumers documented on index.json rely on it covering the whole
+    # corpus.
+    core = source_registry.core_ids(registry)
+    core_records = [r for r in records if r["source_id"] in core]
+    shard_records = {}
+    for record in records:
+        if record["source_id"] not in core:
+            shard_records.setdefault(record["source_id"], []).append(record)
+
+    if not core_records:
+        # A corpus with nothing in the always-loaded payload renders an empty
+        # page for every visitor, which no per-source min_awards floor catches.
+        raise AssertionError(
+            "no core records: every active source is marked delivery: shard, so "
+            "data/awards.json would be empty and the site would load blank"
+        )
+
     slim = [build_slim_record(r) for r in records]
-    manifest = build_manifest(records, meta, registry)
+    manifest = build_manifest(records, meta, registry, core_records=core_records)
     sources_json = source_registry.to_public_json(registry)
+    for source_id, entry in sources_json.items():
+        row = per_source.get(source_id)
+        if row:
+            entry["award_count"] = row["total"]
+        if source_id in shard_records:
+            entry["shard_path"] = f"sources/{source_id}.json"
     filters_json = facet_spec.to_spec()
 
     # Sanity-check the derived outputs before anything is swapped into place.
@@ -353,13 +455,22 @@ def main():
     # that window matters more.
     SITE_DATA_DIR.mkdir(parents=True, exist_ok=True)
     pending = [
-        ("awards.json", records, True),
+        ("awards.json", core_records, True),
         ("meta.json", meta, False),
         ("awards.slim.json", slim, True),
         ("index.json", manifest, False),
         ("sources.json", sources_json, False),
         ("filters.json", filters_json, False),
     ]
+    (SITE_DATA_DIR / "sources").mkdir(parents=True, exist_ok=True)
+    pending += [(f"sources/{sid}.json", recs, True)
+                for sid, recs in sorted(shard_records.items())]
+
+    # A shard file for a source that no longer produces rows would be served
+    # forever, so stale ones are removed rather than left behind.
+    stale = [q for q in (SITE_DATA_DIR / "sources").glob("*.json")
+             if q.stem not in shard_records]
+
     for name, payload, minified in pending:
         tmp = SITE_DATA_DIR / (name + ".tmp")
         with open(tmp, "w", encoding="utf-8") as f:
@@ -370,8 +481,15 @@ def main():
 
     for name, _, _ in pending:
         (SITE_DATA_DIR / (name + ".tmp")).replace(SITE_DATA_DIR / name)
+    for q in stale:
+        q.unlink()
+        print(f"Removed stale shard {q}")
 
-    print(f"Wrote {len(records)} awards to {SITE_DATA_DIR / 'awards.json'}")
+    print(f"Wrote {len(core_records)} core awards to {SITE_DATA_DIR / 'awards.json'} "
+          f"({', '.join(sorted(core))})")
+    for sid, recs in sorted(shard_records.items()):
+        size = (SITE_DATA_DIR / f"sources/{sid}.json").stat().st_size
+        print(f"Wrote {len(recs):5d} awards to sources/{sid}.json ({size / 1024:.0f} KB)")
     print(f"Wrote {len(slim)} slim records to {SITE_DATA_DIR / 'awards.slim.json'}")
     print(f"Wrote endpoint manifest to {SITE_DATA_DIR / 'index.json'}")
     print(f"Wrote {len(sources_json)} source registry entries to {SITE_DATA_DIR / 'sources.json'}")
